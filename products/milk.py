@@ -4,8 +4,6 @@ from core.spoilage import StrictExpirySpoilage
 
 
 class Milk(Product):
-    """Класс для молока (строгий срок годности)"""
-    
     def __init__(self, 
                  name: str,
                  purchase_price: float,
@@ -27,13 +25,11 @@ class Milk(Product):
         self.shelf_life_days = shelf_life_days
     
     def init_batches(self, start_date: datetime):
-        """Инициализация начальных партий молока"""
         self.batches = [
-            Batch(start_date - timedelta(days=5), 100, start_date + timedelta(days=5)),
-            Batch(start_date - timedelta(days=2), 60, start_date + timedelta(days=8))
-        ]
+        Batch(datetime(2026, 1, 26), 100, datetime(2026, 2, 5)),
+        Batch(datetime(2026, 1, 29), 60, datetime(2026, 2, 8))
+    ]
     
     def _add_batch(self, current_date: datetime, quantity: float):
-        """Добавление новой партии молока"""
         expiry_date = current_date + timedelta(days=self.shelf_life_days)
         self.batches.append(Batch(current_date, quantity, expiry_date))

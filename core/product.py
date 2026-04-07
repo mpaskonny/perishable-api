@@ -4,7 +4,6 @@ from typing import List, Dict, Any
 
 
 class Batch:
-    """Класс партии товара"""
     def __init__(self, arrival_date: datetime, quantity: float, expiry_date: datetime = None):
         self.arrival_date = arrival_date
         self.quantity = quantity
@@ -12,8 +11,6 @@ class Batch:
 
 
 class Product(ABC):
-    """Базовый класс для всех продуктов"""
-    
     def __init__(self, 
                  name: str,
                  purchase_price: float,
@@ -47,17 +44,14 @@ class Product(ABC):
         self.total_spoilage_money = 0.0
         self.total_utilization_cost = 0.0
         
-        # Для статистики покупателей
         self.fifo_rates = []
         self.lifo_rates = []
     
     @abstractmethod
     def init_batches(self, start_date: datetime):
-        """Инициализация начальных партий"""
         pass
     
     def _process_sales(self, demand: float, current_date: datetime, fifo_percent: float, lifo_percent: float):
-        """Обработка продаж (FIFO/LIFO)"""
         if not self.batches or demand <= 0:
             return 0, 0, 0, 0
         
@@ -65,19 +59,15 @@ class Product(ABC):
         if total_stock == 0:
             return 0, 0, 0, 0
         
-        # Получаем распределение покупателей
         fifo_count, lifo_count = self.customer.get_sales_distribution(demand, fifo_percent, lifo_percent)
         
-        # Сохраняем проценты для статистики
         total_customers = fifo_count + lifo_count
         if total_customers > 0:
             self.fifo_rates.append(fifo_count / total_customers * 100)
             self.lifo_rates.append(lifo_count / total_customers * 100)
         
-        # Копируем партии для работы
         working_batches = [Batch(b.arrival_date, b.quantity, b.expiry_date) for b in self.batches]
         
-        # FIFO продажи (берут самое старое)
         fifo_sold = 0
         fifo_remaining = fifo_count
         for batch in sorted(working_batches, key=lambda b: b.arrival_date):
@@ -88,7 +78,6 @@ class Product(ABC):
             fifo_remaining -= take
             fifo_sold += take
         
-        # LIFO продажи (берут самое свежее)
         lifo_sold = 0
         lifo_remaining = lifo_count
         for batch in sorted(working_batches, key=lambda b: b.arrival_date, reverse=True):
@@ -102,7 +91,6 @@ class Product(ABC):
         total_sold = fifo_sold + lifo_sold
         remaining_demand = demand - total_sold
         
-        # Второй проход: если спрос остался, добираем из любых партий
         if remaining_demand > 0:
             for batch in sorted(working_batches, key=lambda b: b.arrival_date):
                 if remaining_demand <= 0:
@@ -114,17 +102,15 @@ class Product(ABC):
                     total_sold += take
                     fifo_sold += take
         
-        # Обновляем оригинальные партии
         self.batches = working_batches
         
         revenue = total_sold * self.sale_price
         return total_sold, revenue, fifo_sold, lifo_sold
     
     def _process_spoilage(self, current_date: datetime):
-        """Обработка порчи"""
         spoiled_kg = 0.0
         spoiled_money = 0.0
-        
+    
         for batch in self.batches:
             if batch.quantity > 0:
                 spoiled = self.spoilage.calculate_spoilage(batch, current_date)
@@ -132,14 +118,13 @@ class Product(ABC):
                     batch.quantity -= spoiled
                     spoiled_kg += spoiled
                     spoiled_money += spoiled * self.purchase_price
-                    
+                
                     if self.utilization_price > 0:
                         self.total_utilization_cost += spoiled * self.utilization_price
-        
+    
         return spoiled_kg, spoiled_money
     
     def _process_delivery(self, day: int, current_date: datetime):
-        """Обработка поставки"""
         total_stock = sum(b.quantity for b in self.batches)
         
         if self.delivery.should_deliver(day, current_date, total_stock, self.min_stock):
@@ -152,18 +137,20 @@ class Product(ABC):
         return 0
     
     def _add_batch(self, current_date: datetime, quantity: float):
-        """Добавление новой партии (переопределяется в дочерних классах)"""
         pass
     
     def _record_day(self, day: int, current_date: datetime, demand: float,
                     sold: float, revenue: float, spoiled_kg: float,
                     spoiled_money: float, order: float, fifo_sold: float, lifo_sold: float,
                     purchase_cost: float):
-        """Запись результатов дня"""
+        
+        start_stock = sum(b.quantity for b in self.batches) + sold  # было до продаж
+
         self.history.append({
             'day': day,
             'date': current_date.strftime('%d.%m'),
             'demand': demand,
+            'start_stock': start_stock,
             'sales': sold,
             'spoilage_kg': spoiled_kg,
             'spoilage_money': spoiled_money,
@@ -180,13 +167,13 @@ class Product(ABC):
         self.total_spoilage_money += spoiled_money
     
     def run(self, days: int, start_date: datetime, fifo_percent: float, lifo_percent: float) -> Dict[str, Any]:
-        """Запуск симуляции"""
         self.init_batches(start_date)
         self.history = []
         self.fifo_rates = []
         self.lifo_rates = []
         self.total_revenue = 0.0
-        self.total_purchase_cost = 0.0
+        initial_cost = sum(b.quantity for b in self.batches) * self.purchase_price
+        self.total_purchase_cost = initial_cost
         self.total_spoilage_kg = 0.0
         self.total_spoilage_money = 0.0
         self.total_utilization_cost = 0.0
@@ -207,7 +194,6 @@ class Product(ABC):
         return self._get_results()
     
     def _get_results(self) -> Dict[str, Any]:
-        """Формирование результатов"""
         spoilage_stats = {}
         if self.fifo_rates:
             spoilage_stats['fifo_mean'] = sum(self.fifo_rates) / len(self.fifo_rates)

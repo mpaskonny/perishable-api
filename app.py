@@ -230,7 +230,9 @@ if run_button:
             params["box_size"] = box_size_tomatoes if delivery_type_tomatoes == "box" else 0
 
         # Отправляем запрос к API
-        endpoint = f"{API_URL}/simulate/{product}_{distribution}"
+        endpoint = f"{API_URL}/simulate"
+        params["product_type"] = product
+        params["distribution"] = distribution
 
         try:
             response = requests.post(endpoint, json=params)

@@ -1,5 +1,6 @@
 from pydantic import BaseModel
 from typing import List, Optional, Any
+from datetime import datetime
 
 
 class SimulationParams(BaseModel):
@@ -8,6 +9,11 @@ class SimulationParams(BaseModel):
     min_stock: float = 300.0
     purchase_price: float = 220.0
     sale_price: float = 295.0
+    
+    # НОВЫЕ ПОЛЯ ДЛЯ V2
+    product_type: Optional[str] = "milk"
+    distribution: Optional[str] = "uniform"
+    start_date: datetime = datetime(2026, 2, 1)
 
     # Для помидоров
     sigma_10: Optional[float] = 0.96
@@ -24,8 +30,10 @@ class SimulationParams(BaseModel):
     delivery_type: Optional[str] = "unit"
     box_size: Optional[int] = 0
 
-    # Коэффициенты спроса по дням недели (общие для всех продуктов)
-    weekday_factors: Optional[List[float]] = [0.8, 0.6, 0.9, 1.0, 1.3, 1.5, 1.1]  # пн, вт, ср, чт, пт, сб, вс
+    # Коэффициенты спроса по дням недели
+    weekday_factors: Optional[List[float]] = [0.8, 0.6, 0.9, 1.0, 1.3, 1.5, 1.1]
+
+    fixed_demand: Optional[List[float]] = None
 
 
 class DailyResult(BaseModel):

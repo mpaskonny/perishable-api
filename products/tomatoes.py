@@ -5,8 +5,6 @@ from core.spoilage import WeeklySpoilage
 
 
 class Tomatoes(Product):
-    """Класс для помидоров (недельная порча)"""
-    
     def __init__(self,
                  name: str,
                  purchase_price: float,
@@ -27,29 +25,22 @@ class Tomatoes(Product):
         
         self.week_rates = week_rates
         self.week_sigmas = week_sigmas
-        self.week10_rates = []   # для 1-й недели (10%)
-        self.week50_rates = []   # для 2-й недели (50%)
+        self.week10_rates = []
+        self.week50_rates = []
     
     def init_batches(self, start_date: datetime):
-        """Инициализация начальных партий помидоров"""
         self.batches = [
             Batch(start_date - timedelta(days=2), 150),
             Batch(start_date - timedelta(days=1), 150)
         ]
     
     def _add_batch(self, current_date: datetime, quantity: float):
-        """Добавление новой партии помидоров"""
         self.batches.append(Batch(current_date, quantity))
     
     def _process_spoilage(self, current_date: datetime):
-        """
-        Порча для помидоров — раз в неделю.
-        Переопределяем, чтобы собирать проценты для графиков.
-        """
         spoiled_kg = 0.0
         spoiled_money = 0.0
         
-        # Группируем партии по возрасту (неделям)
         age_groups = {0: 0.0, 1: 0.0, 2: 0.0}
         
         for batch in self.batches:
@@ -59,15 +50,12 @@ class Tomatoes(Product):
             else:
                 age_groups[age_weeks] += batch.quantity
         
-        # Очищаем партии — они будут пересозданы
         self.batches = []
         
-        # 1. Возраст 2 (3-я неделя) — 100% порчи
         if age_groups[2] > 0:
             spoiled_kg += age_groups[2]
             spoiled_money += age_groups[2] * self.purchase_price
         
-        # 2. Возраст 1 (2-я неделя) — 50% с сигмой
         if age_groups[1] > 0:
             rate = 50.0
             sigma = self.week_sigmas.get(2, 1.59)
@@ -86,13 +74,11 @@ class Tomatoes(Product):
             spoiled_kg += spoiled
             spoiled_money += spoiled * self.purchase_price
             
-            # Собираем проценты для графика 50%
             self.week50_rates.append(actual_rate)
             
             if remaining > 0:
                 self.batches.append(Batch(current_date, remaining))
         
-        # 3. Возраст 0 (1-я неделя) — 10% с сигмой
         if age_groups[0] > 0:
             rate = 10.0
             sigma = self.week_sigmas.get(1, 0.96)
@@ -111,7 +97,6 @@ class Tomatoes(Product):
             spoiled_kg += spoiled
             spoiled_money += spoiled * self.purchase_price
             
-            # Собираем проценты для графика 10%
             self.week10_rates.append(actual_rate)
             
             if remaining > 0:
@@ -123,7 +108,6 @@ class Tomatoes(Product):
         return spoiled_kg, spoiled_money
     
     def _get_results(self):
-        """Переопределяем для добавления статистики порчи"""
         results = super()._get_results()
         results['spoilage_stats']['week10_rates'] = self.week10_rates
         results['spoilage_stats']['week10_mean'] = sum(self.week10_rates) / len(self.week10_rates) if self.week10_rates else 0
