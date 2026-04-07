@@ -1,1 +1,1 @@
-# пустой файл
+from .milk import Milk
