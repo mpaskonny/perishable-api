@@ -58,12 +58,11 @@ class Product(ABC):
     
     def _process_sales(self, demand: float, current_date: datetime, fifo_percent: float, lifo_percent: float):
         if not self.batches or demand <= 0:
-            return 0, 0, 0, 0
+            return 0, 0, 0, 0, demand 
         
         total_stock = sum(b.quantity for b in self.batches)
         if total_stock == 0:
-            return 0, 0, 0, 0
-        
+            return 0, 0, 0, 0, demand 
         fifo_wanted, lifo_wanted = self.customer.get_sales_distribution(
             demand, fifo_percent, lifo_percent
         )
@@ -90,7 +89,9 @@ class Product(ABC):
                 lifo_actual += take
         
         total_sold = fifo_actual + lifo_actual
-        
+        unmet_demand = demand - total_sold
+
+
         if fifo_actual + lifo_actual > 0:
             self.fifo_rates.append(fifo_actual / (fifo_actual + lifo_actual) * 100)
             self.lifo_rates.append(lifo_actual / (fifo_actual + lifo_actual) * 100)
@@ -100,7 +101,7 @@ class Product(ABC):
         revenue = total_sold * self.sale_price
         self.total_revenue += revenue
         
-        return total_sold, revenue, fifo_actual, lifo_actual
+        return total_sold, revenue, fifo_actual, lifo_actual, unmet_demand
     
     def _process_spoilage(self, current_date: datetime):
         spoiled_kg = 0.0
@@ -156,7 +157,7 @@ class Product(ABC):
     def _record_day(self, day: int, current_date: datetime, demand: float,
                     sold: float, revenue: float, spoiled_kg: float,
                     spoiled_money: float, order: float, fifo_sold: float, lifo_sold: float,
-                    purchase_cost: float):
+                    purchase_cost: float, unmet_demand: float = 0.0):
         
         end_stock = sum(b.quantity for b in self.batches)
         start_stock = end_stock + sold + spoiled_kg
@@ -188,6 +189,7 @@ class Product(ABC):
             'fifo_sales': round(fifo_sold, 2),
             'lifo_sales': round(lifo_sold, 2),
             'purchase_cost': round(purchase_cost, 2),
+            'unmet_demand': round(unmet_demand, 2),
             'end_stock': round(end_stock, 2),
             'stock_week1': round(age_groups[0], 2),
             'stock_week2': round(age_groups[1], 2),
@@ -217,7 +219,7 @@ class Product(ABC):
             order = self._process_delivery(day, current_date)
             purchase_cost = order * self.purchase_price if order else 0.0
             
-            sold, revenue, fifo_sold, lifo_sold = self._process_sales(demand, current_date, fifo_percent, lifo_percent)
+            sold, revenue, fifo_sold, lifo_sold, unmet_demand = self._process_sales(demand, current_date, fifo_percent, lifo_percent)
             
             spoiled_kg, spoiled_money = self._process_spoilage(current_date)
             
@@ -227,7 +229,7 @@ class Product(ABC):
             self.batches = [b for b in self.batches if b.quantity > 0]
             
             self._record_day(day, current_date, demand, sold, revenue, spoiled_kg, spoiled_money,
-                        order, fifo_sold, lifo_sold, purchase_cost)
+                        order, fifo_sold, lifo_sold, purchase_cost, unmet_demand)
         
         return self._get_results()
     

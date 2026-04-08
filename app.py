@@ -307,7 +307,7 @@ if run_button:
 
             st.success("✅ Симуляция завершена!")
 
-            col1, col2, col3, col4 = st.columns(4)
+            col1, col2, col3, col4, col5 = st.columns(5)
 
             with col1:
                 st.metric("Выручка", f"{data['total_revenue']:,.0f} руб")
@@ -318,6 +318,9 @@ if run_button:
                 st.metric("Прибыль", f"{profit:,.0f} руб")
             with col4:
                 st.metric("Потери", f"{data['total_spoilage_kg']:.1f} кг")
+            with col5:
+                total_unmet = sum(day.get('unmet_demand', 0) for day in data['daily_history'])
+                st.metric("Неудовлетворенный спрос", f"{total_unmet:.0f} кг")
 
             st.markdown("---")
 
@@ -376,6 +379,59 @@ if run_button:
                     fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='lightgray')
 
                     st.plotly_chart(fig, use_container_width=True)
+
+                    st.subheader("📊 Динамика остатков на складе")
+
+                    stock_df = pd.DataFrame()
+                    stock_df['День'] = df['day']
+                    stock_df['Остаток на начало дня'] = df['start_stock']
+                    stock_df['Остаток на конец дня'] = df['end_stock']
+                    stock_df = stock_df.dropna()
+
+                    if not stock_df.empty and len(stock_df) > 0:
+                        fig_stock = go.Figure()
+                        
+                        # Остаток на начало дня
+                        fig_stock.add_trace(go.Scatter(
+                            x=stock_df['День'],
+                            y=stock_df['Остаток на начало дня'],
+                            mode='lines+markers',
+                            name='Остаток на начало дня',
+                            line=dict(color='#3498DB', width=2),
+                            marker=dict(size=5)
+                        ))
+                        
+                        # Остаток на конец дня
+                        fig_stock.add_trace(go.Scatter(
+                            x=stock_df['День'],
+                            y=stock_df['Остаток на конец дня'],
+                            mode='lines+markers',
+                            name='Остаток на конец дня',
+                            line=dict(color='#2ECC71', width=3),
+                            marker=dict(size=6, color='#27AE60')
+                        ))
+                        
+                        # Линия min_stock
+                        fig_stock.add_hline(
+                            y=min_stock,
+                            line_dash="dash",
+                            line_color="red",
+                            annotation_text=f"Min запас: {min_stock}",
+                            annotation_position="bottom right"
+                        )
+                        
+                        fig_stock.update_layout(
+                            title=f"Динамика остатков ({distribution} распределение)",
+                            xaxis_title="День",
+                            yaxis_title="Остаток (кг/пакеты)",
+                            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                            margin=dict(t=50),
+                            hovermode='x unified',
+                            template='plotly_white'
+                        )
+                        
+                        st.plotly_chart(fig_stock, use_container_width=True)
+
                 else:
                     st.warning("Нет данных для графика")
 
@@ -607,6 +663,7 @@ if run_button:
                         'demand': 'Спрос (пакеты)',
                         'start_stock': 'Остаток на начало (пакеты)',
                         'sales': 'Продажи (пакеты)',
+                        'unmet_demand': 'Неудовлетворенный спрос (пакеты)',
                         'spoilage': 'Порча (пакеты)',
                         'order': 'Заказ (пакеты)',
                         'revenue': 'Выручка (руб)',
@@ -638,6 +695,7 @@ if run_button:
                         'demand': 'Спрос (кг)',
                         'start_stock': 'Остаток на начало (кг)',
                         'sales': 'Продажи (кг)',
+                        'unmet_demand': 'Неудовлетворенный спрос (кг)',
                         'spoilage': 'Порча (кг)',
                         'order': 'Заказ (кг)',
                         'revenue': 'Выручка (руб)',

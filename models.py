@@ -50,6 +50,7 @@ class DailyResult(BaseModel):
     fifo_sales: Optional[float] = None
     lifo_sales: Optional[float] = None
     end_stock: Optional[float] = None
+    unmet_demand: Optional[float] = None
 
     # Для помидоров
     stock_week1: Optional[float] = None
