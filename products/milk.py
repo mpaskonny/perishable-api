@@ -28,12 +28,11 @@ class Milk(Product):
         self.shelf_life_days = shelf_life_days
     
     def init_batches(self, start_date: datetime):
-        """Инициализация начальных партий молока с учетом даты старта"""
         self.batches = [
             Batch(start_date - timedelta(days=5), 100, 
-                start_date + timedelta(days=self.shelf_life_days - 5)),
+                  start_date + timedelta(days=self.shelf_life_days - 5)),
             Batch(start_date - timedelta(days=2), 60,
-                start_date + timedelta(days=self.shelf_life_days - 2))
+                  start_date + timedelta(days=self.shelf_life_days - 2))
         ]
     
     def _add_batch(self, current_date: datetime, quantity: float):

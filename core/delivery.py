@@ -3,16 +3,12 @@ import math
 
 
 class DeliveryStrategy(ABC):
-    """Абстрактная стратегия поставок"""
-    
     @abstractmethod
     def should_deliver(self, day, current_date, total_stock, min_stock):
-        """Определяет, нужно ли делать поставку сегодня"""
         pass
     
     @abstractmethod
     def calculate_order(self, total_stock, min_stock, delivery_type, box_size):
-        """Рассчитывает размер заказа"""
         pass
 
 
@@ -23,7 +19,7 @@ class PeriodicDelivery(DeliveryStrategy):
         self.frequency = frequency
     
     def should_deliver(self, day, current_date, total_stock, min_stock):
-        return day % self.frequency == 0 and day > 0
+        return (day % self.frequency == 0 and day > 0) and total_stock < min_stock
     
     def calculate_order(self, total_stock, min_stock, delivery_type, box_size):
         needed = min_stock - total_stock
@@ -36,16 +32,11 @@ class PeriodicDelivery(DeliveryStrategy):
 
 
 class DaysOfWeekDelivery(DeliveryStrategy):
-    """Поставки в конкретные дни недели"""
-    
     def __init__(self, delivery_days):
-        """
-        delivery_days: список дней недели (0=пн, 6=вс)
-        """
         self.delivery_days = delivery_days
     
     def should_deliver(self, day, current_date, total_stock, min_stock):
-        return current_date.weekday() in self.delivery_days
+        return (current_date.weekday() in self.delivery_days) and total_stock < min_stock
     
     def calculate_order(self, total_stock, min_stock, delivery_type, box_size):
         needed = min_stock - total_stock

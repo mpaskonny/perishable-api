@@ -1,7 +1,6 @@
 from abc import ABC, abstractmethod
 
 
-
 class SpoilageStrategy(ABC):
     @abstractmethod
     def calculate_spoilage(self, batch, current_date):
@@ -13,4 +12,3 @@ class StrictExpirySpoilage(SpoilageStrategy):
         if batch.expiry_date and batch.expiry_date <= current_date:
             return batch.quantity
         return 0
-

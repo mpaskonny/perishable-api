@@ -38,7 +38,8 @@ class NormalDemand(DemandStrategy):
         if weekday_factors:
             base_demand *= weekday_factors[date.weekday()]
         return int(round(base_demand))
-    
+
+
 class FixedDemand(DemandStrategy):
     def __init__(self, demand_list):
         self.demand_list = demand_list
@@ -49,4 +50,4 @@ class FixedDemand(DemandStrategy):
             demand = self.demand_list[self.day]
             self.day += 1
             return demand
-        return 20  
+        return 20

@@ -7,9 +7,6 @@ class CustomerStrategy(ABC):
     
     @abstractmethod
     def get_sales_distribution(self, total_demand, fifo_percent, lifo_percent):
-        """
-        Возвращает (fifo_count, lifo_count) - сколько покупателей берут старое и свежее
-        """
         pass
 
 
@@ -29,7 +26,6 @@ class NormalCustomerStrategy(CustomerStrategy):
         self.sigma = sigma
     
     def get_sales_distribution(self, total_demand, fifo_percent, lifo_percent):
-        # Генерируем случайный процент с нормальным распределением (через сумму 12 чисел)
         r = [random.random() for _ in range(12)]
         deviation = sum(r) - 6
         actual_fifo = self.sigma * deviation + fifo_percent

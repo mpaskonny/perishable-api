@@ -22,8 +22,8 @@ class Product(ABC):
                  delivery_strategy,
                  weekday_factors: List[float] = None,
                  utilization_price: float = 0.0,
-                delivery_type: str = "unit",
-                box_size: int = 0):
+                 delivery_type: str = "unit",
+                 box_size: int = 0):
         
         self.name = name
         self.purchase_price = purchase_price
@@ -57,15 +57,6 @@ class Product(ABC):
         pass
     
     def _process_sales(self, demand: float, current_date: datetime, fifo_percent: float, lifo_percent: float):
-        """
-        Обработка продаж с правильным распределением FIFO/LIFO
-        
-        Алгоритм:
-        1. Определяем, сколько покупателей хотят взять FIFO и LIFO
-        2. Сначала удовлетворяем FIFO-покупателей из старых партий
-        3. Затем удовлетворяем LIFO-покупателей из свежих партий
-        4. Если спрос не удовлетворен полностью — фиксируем дефицит
-        """
         if not self.batches or demand <= 0:
             return 0, 0, 0, 0
         
@@ -73,18 +64,15 @@ class Product(ABC):
         if total_stock == 0:
             return 0, 0, 0, 0
         
-        # 1. Сколько хотят FIFO и LIFO
         fifo_wanted, lifo_wanted = self.customer.get_sales_distribution(
             demand, fifo_percent, lifo_percent
         )
         
-        # Создаем копии партий для работы
         working_batches = [Batch(b.arrival_date, b.quantity, b.expiry_date) for b in self.batches]
         
         fifo_actual = 0
         lifo_actual = 0
         
-        # 2. Продажа FIFO (сначала самое старое)
         for batch in sorted(working_batches, key=lambda b: b.arrival_date):
             if fifo_actual >= fifo_wanted:
                 break
@@ -92,28 +80,26 @@ class Product(ABC):
             batch.quantity -= take
             fifo_actual += take
         
-        # 3. Продажа LIFO (сначала самое свежее)
-        # Важно: продаем только то, что осталось после FIFO
         remaining_for_lifo = min(lifo_wanted, demand - fifo_actual)
         for batch in sorted(working_batches, key=lambda b: b.arrival_date, reverse=True):
             if lifo_actual >= remaining_for_lifo:
                 break
-            if batch.quantity > 0:  # учитываем только то, что не продали в FIFO
+            if batch.quantity > 0:
                 take = min(batch.quantity, remaining_for_lifo - lifo_actual)
                 batch.quantity -= take
                 lifo_actual += take
         
         total_sold = fifo_actual + lifo_actual
         
-        # 4. Фиксируем статистику распределения покупателей
         if fifo_actual + lifo_actual > 0:
             self.fifo_rates.append(fifo_actual / (fifo_actual + lifo_actual) * 100)
             self.lifo_rates.append(lifo_actual / (fifo_actual + lifo_actual) * 100)
         
-        # 5. Обновляем реальные партии
         self.batches = working_batches
         
         revenue = total_sold * self.sale_price
+        self.total_revenue += revenue
+        
         return total_sold, revenue, fifo_actual, lifo_actual
     
     def _process_spoilage(self, current_date: datetime):
@@ -138,7 +124,6 @@ class Product(ABC):
         
         if self.delivery.should_deliver(day, current_date, total_stock, self.min_stock):
             if total_stock < self.min_stock:
-                # Используем поля класса вместо жестко зашитых значений
                 order = self.delivery.calculate_order(
                     total_stock, 
                     self.min_stock, 
@@ -154,32 +139,64 @@ class Product(ABC):
     def _add_batch(self, current_date: datetime, quantity: float):
         pass
     
+    def _get_age_groups(self, current_date):
+        age_groups = {0: 0.0, 1: 0.0, 2: 0.0}
+        
+        for batch in self.batches:
+            age_days = (current_date - batch.arrival_date).days
+            if age_days <= 7:
+                age_groups[0] += batch.quantity
+            elif age_days <= 14:
+                age_groups[1] += batch.quantity
+            else:
+                age_groups[2] += batch.quantity
+        
+        return age_groups
+
     def _record_day(self, day: int, current_date: datetime, demand: float,
                     sold: float, revenue: float, spoiled_kg: float,
                     spoiled_money: float, order: float, fifo_sold: float, lifo_sold: float,
                     purchase_cost: float):
         
-        start_stock = sum(b.quantity for b in self.batches) + sold
-
+        end_stock = sum(b.quantity for b in self.batches)
+        start_stock = end_stock + sold + spoiled_kg
+        age_groups = self._get_age_groups(current_date)
+        
+        batch_stocks = {}
+        for i, batch in enumerate(sorted(self.batches, key=lambda b: b.arrival_date), 1):
+            if i <= 5:
+                batch_stocks[f'batch_{i}_stock'] = round(batch.quantity, 2)
+        
+        fifo_percent_actual = None
+        lifo_percent_actual = None
+        if fifo_sold + lifo_sold > 0:
+            fifo_percent_actual = round(fifo_sold / (fifo_sold + lifo_sold) * 100, 2)
+            lifo_percent_actual = round(lifo_sold / (fifo_sold + lifo_sold) * 100, 2)
+        
+        utilization_cost = round(spoiled_kg * self.utilization_price, 2) if self.utilization_price > 0 else 0.0
+        
         self.history.append({
             'day': day,
             'date': current_date.strftime('%d.%m'),
-            'demand': demand,
-            'start_stock': start_stock,
-            'sales': sold,  # ← теперь просто float, а не список
-            'spoilage_kg': spoiled_kg,
-            'spoilage_money': spoiled_money,
-            'order': order,
-            'revenue': revenue,
-            'fifo_sales': fifo_sold,
-            'lifo_sales': lifo_sold,
-            'purchase_cost': purchase_cost,
-            'end_stock': sum(b.quantity for b in self.batches)
+            'demand': round(demand, 2),
+            'start_stock': round(start_stock, 2),
+            'sales': round(sold, 2),
+            'spoilage_kg': round(spoiled_kg, 2),
+            'spoilage_money': round(spoiled_money, 2),
+            'order': round(order, 2),
+            'revenue': round(revenue, 2),
+            'fifo_sales': round(fifo_sold, 2),
+            'lifo_sales': round(lifo_sold, 2),
+            'purchase_cost': round(purchase_cost, 2),
+            'end_stock': round(end_stock, 2),
+            'stock_week1': round(age_groups[0], 2),
+            'stock_week2': round(age_groups[1], 2),
+            'stock_week3': round(age_groups[2], 2),
+            'fifo_percent': fifo_percent_actual,
+            'lifo_percent': lifo_percent_actual,
+            'utilization_cost': utilization_cost,
+            **batch_stocks
         })
-        
-        self.total_revenue += revenue
-        self.total_spoilage_kg += spoiled_kg
-        self.total_spoilage_money += spoiled_money
     
     def run(self, days: int, start_date: datetime, fifo_percent: float, lifo_percent: float) -> Dict[str, Any]:
         self.init_batches(start_date)
@@ -196,15 +213,18 @@ class Product(ABC):
         for day in range(1, days + 1):
             current_date = start_date + timedelta(days=day - 1)
             demand = self.demand.get_demand(current_date, self.weekday_factors)
-            sold, revenue, fifo_sold, lifo_sold = self._process_sales(demand, current_date, fifo_percent, lifo_percent)
-            spoiled_kg, spoiled_money = self._process_spoilage(current_date)
+            
             order = self._process_delivery(day, current_date)
             purchase_cost = order * self.purchase_price if order else 0.0
+            
+            sold, revenue, fifo_sold, lifo_sold = self._process_sales(demand, current_date, fifo_percent, lifo_percent)
+            
+            spoiled_kg, spoiled_money = self._process_spoilage(current_date)
             
             self.batches = [b for b in self.batches if b.quantity > 0]
             
             self._record_day(day, current_date, demand, sold, revenue, spoiled_kg, spoiled_money,
-                           order, fifo_sold, lifo_sold, purchase_cost)
+                        order, fifo_sold, lifo_sold, purchase_cost)
         
         return self._get_results()
     
@@ -230,4 +250,3 @@ class Product(ABC):
             },
             'spoilage_stats': spoilage_stats
         }
-    
