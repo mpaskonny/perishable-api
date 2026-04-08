@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import List, Optional, Any
+from typing import List, Optional, Any, Union
 from datetime import datetime
 
 
@@ -47,6 +47,10 @@ class DailyResult(BaseModel):
     order: float
     revenue: float
     purchase_cost: float
+
+    fifo_sales: Optional[float] = None
+    lifo_sales: Optional[float] = None
+    spoilage_breakdown: Optional[dict] = None
 
 
 class SimulationResponse(BaseModel):

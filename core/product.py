@@ -21,7 +21,9 @@ class Product(ABC):
                  customer_strategy,
                  delivery_strategy,
                  weekday_factors: List[float] = None,
-                 utilization_price: float = 0.0):
+                 utilization_price: float = 0.0,
+                delivery_type: str = "unit",
+                box_size: int = 0):
         
         self.name = name
         self.purchase_price = purchase_price
@@ -34,6 +36,9 @@ class Product(ABC):
         self.customer = customer_strategy
         self.delivery = delivery_strategy
         self.weekday_factors = weekday_factors or [1.0] * 7
+
+        self.delivery_type = delivery_type
+        self.box_size = box_size
         
         self.batches: List[Batch] = []
         self.history = []
@@ -52,6 +57,15 @@ class Product(ABC):
         pass
     
     def _process_sales(self, demand: float, current_date: datetime, fifo_percent: float, lifo_percent: float):
+        """
+        Обработка продаж с правильным распределением FIFO/LIFO
+        
+        Алгоритм:
+        1. Определяем, сколько покупателей хотят взять FIFO и LIFO
+        2. Сначала удовлетворяем FIFO-покупателей из старых партий
+        3. Затем удовлетворяем LIFO-покупателей из свежих партий
+        4. Если спрос не удовлетворен полностью — фиксируем дефицит
+        """
         if not self.batches or demand <= 0:
             return 0, 0, 0, 0
         
@@ -59,53 +73,48 @@ class Product(ABC):
         if total_stock == 0:
             return 0, 0, 0, 0
         
-        fifo_count, lifo_count = self.customer.get_sales_distribution(demand, fifo_percent, lifo_percent)
+        # 1. Сколько хотят FIFO и LIFO
+        fifo_wanted, lifo_wanted = self.customer.get_sales_distribution(
+            demand, fifo_percent, lifo_percent
+        )
         
-        total_customers = fifo_count + lifo_count
-        if total_customers > 0:
-            self.fifo_rates.append(fifo_count / total_customers * 100)
-            self.lifo_rates.append(lifo_count / total_customers * 100)
-        
+        # Создаем копии партий для работы
         working_batches = [Batch(b.arrival_date, b.quantity, b.expiry_date) for b in self.batches]
         
-        fifo_sold = 0
-        fifo_remaining = fifo_count
+        fifo_actual = 0
+        lifo_actual = 0
+        
+        # 2. Продажа FIFO (сначала самое старое)
         for batch in sorted(working_batches, key=lambda b: b.arrival_date):
-            if fifo_remaining <= 0:
+            if fifo_actual >= fifo_wanted:
                 break
-            take = min(batch.quantity, fifo_remaining)
+            take = min(batch.quantity, fifo_wanted - fifo_actual)
             batch.quantity -= take
-            fifo_remaining -= take
-            fifo_sold += take
+            fifo_actual += take
         
-        lifo_sold = 0
-        lifo_remaining = lifo_count
+        # 3. Продажа LIFO (сначала самое свежее)
+        # Важно: продаем только то, что осталось после FIFO
+        remaining_for_lifo = min(lifo_wanted, demand - fifo_actual)
         for batch in sorted(working_batches, key=lambda b: b.arrival_date, reverse=True):
-            if lifo_remaining <= 0:
+            if lifo_actual >= remaining_for_lifo:
                 break
-            take = min(batch.quantity, lifo_remaining)
-            batch.quantity -= take
-            lifo_remaining -= take
-            lifo_sold += take
+            if batch.quantity > 0:  # учитываем только то, что не продали в FIFO
+                take = min(batch.quantity, remaining_for_lifo - lifo_actual)
+                batch.quantity -= take
+                lifo_actual += take
         
-        total_sold = fifo_sold + lifo_sold
-        remaining_demand = demand - total_sold
+        total_sold = fifo_actual + lifo_actual
         
-        if remaining_demand > 0:
-            for batch in sorted(working_batches, key=lambda b: b.arrival_date):
-                if remaining_demand <= 0:
-                    break
-                if batch.quantity > 0:
-                    take = min(batch.quantity, remaining_demand)
-                    batch.quantity -= take
-                    remaining_demand -= take
-                    total_sold += take
-                    fifo_sold += take
+        # 4. Фиксируем статистику распределения покупателей
+        if fifo_actual + lifo_actual > 0:
+            self.fifo_rates.append(fifo_actual / (fifo_actual + lifo_actual) * 100)
+            self.lifo_rates.append(lifo_actual / (fifo_actual + lifo_actual) * 100)
         
+        # 5. Обновляем реальные партии
         self.batches = working_batches
         
         revenue = total_sold * self.sale_price
-        return total_sold, revenue, fifo_sold, lifo_sold
+        return total_sold, revenue, fifo_actual, lifo_actual
     
     def _process_spoilage(self, current_date: datetime):
         spoiled_kg = 0.0
@@ -129,7 +138,13 @@ class Product(ABC):
         
         if self.delivery.should_deliver(day, current_date, total_stock, self.min_stock):
             if total_stock < self.min_stock:
-                order = self.delivery.calculate_order(total_stock, self.min_stock, "unit", 0)
+                # Используем поля класса вместо жестко зашитых значений
+                order = self.delivery.calculate_order(
+                    total_stock, 
+                    self.min_stock, 
+                    self.delivery_type,  
+                    self.box_size        
+                )
                 if order > 0:
                     self._add_batch(current_date, order)
                     self.total_purchase_cost += order * self.purchase_price

@@ -64,7 +64,9 @@ def create_product(params: SimulationParams):
             delivery_strategy=delivery_strategy,
             shelf_life_days=params.shelf_life_days,
             utilization_price=params.utilization_price,
-            weekday_factors=weekday_factors
+            weekday_factors=weekday_factors,
+            delivery_type=params.delivery_type,
+            box_size=params.box_size
         )
     else:
         return Tomatoes(
@@ -77,7 +79,9 @@ def create_product(params: SimulationParams):
             delivery_strategy=delivery_strategy,
             week_rates={1: 10.0, 2: 50.0, 3: 100.0},
             week_sigmas={1: params.sigma_10, 2: params.sigma_50},
-            weekday_factors=weekday_factors
+            weekday_factors=weekday_factors,
+            delivery_type=params.delivery_type,
+            box_size=params.box_size
         )
 
 
@@ -98,19 +102,32 @@ async def simulate(params: SimulationParams):
         
         daily_results = []
         for h in results['daily_history']:
+            # АДАПТИВНОЕ СОЗДАНИЕ DailyResult В ЗАВИСИМОСТИ ОТ ТИПА ПРОДУКТА
+            if params.product_type == "milk":
+                # Для молока: есть разделение на FIFO/LIFO
+                sales_list = [float(h.get('fifo_sales', 0)), float(h.get('lifo_sales', 0)), 0.0]
+                spoilage_list = [float(h.get('spoilage_kg', 0)), 0.0, 0.0]
+                start_stock_list = [float(h.get('start_stock', 0))]
+            else:  # tomatoes
+                # Для помидоров: простые продажи и порча
+                sales_list = [float(h.get('sales', 0)), 0.0, 0.0]
+                spoilage_list = [float(h.get('spoilage_kg', 0)), 0.0, 0.0]
+                start_stock_list = [float(h.get('start_stock', 0))]
+            
             daily_results.append(DailyResult(
                 day=h['day'],
                 date=h['date'],
                 demand=float(h['demand']),
-                start_stock=[float(h['start_stock'])],
-                sales=[float(h['fifo_sales']), float(h['lifo_sales']), 0.0],
-                spoilage=[float(h['spoilage_kg']), 0.0, 0.0],
+                start_stock=start_stock_list,
+                sales=sales_list,
+                spoilage=spoilage_list,
                 order=float(h['order']),
                 revenue=float(h['revenue']),
                 purchase_cost=float(h['purchase_cost'])
             ))
         
-        return SimulationResponse(
+        # Формируем ответ
+        response = SimulationResponse(
             total_revenue=results['total_revenue'],
             total_cost=results['total_cost'],
             total_spoilage_kg=results['total_spoilage_kg'],
@@ -120,6 +137,9 @@ async def simulate(params: SimulationParams):
             demand_stats=results['demand_stats'],
             spoilage_stats=results['spoilage_stats']
         )
+        
+        return response
+        
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
