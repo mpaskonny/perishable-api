@@ -41,16 +41,16 @@ class DailyResult(BaseModel):
     day: int
     date: str
     demand: float
-    start_stock: List[float]
-    sales: List[float]
-    spoilage: List[float]
+    start_stock: float
+    sales: float
+    spoilage: float
     order: float
     revenue: float
     purchase_cost: float
 
     fifo_sales: Optional[float] = None
     lifo_sales: Optional[float] = None
-    spoilage_breakdown: Optional[dict] = None
+    end_stock: Optional[float] = None
 
 
 class SimulationResponse(BaseModel):

@@ -142,15 +142,15 @@ class Product(ABC):
                 order = self.delivery.calculate_order(
                     total_stock, 
                     self.min_stock, 
-                    self.delivery_type,  
-                    self.box_size        
+                    self.delivery_type,  # ← используем поле
+                    self.box_size        # ← используем поле
                 )
                 if order > 0:
                     self._add_batch(current_date, order)
                     self.total_purchase_cost += order * self.purchase_price
                     return order
         return 0
-    
+
     def _add_batch(self, current_date: datetime, quantity: float):
         pass
     
@@ -159,14 +159,14 @@ class Product(ABC):
                     spoiled_money: float, order: float, fifo_sold: float, lifo_sold: float,
                     purchase_cost: float):
         
-        start_stock = sum(b.quantity for b in self.batches) + sold  # было до продаж
+        start_stock = sum(b.quantity for b in self.batches) + sold
 
         self.history.append({
             'day': day,
             'date': current_date.strftime('%d.%m'),
             'demand': demand,
             'start_stock': start_stock,
-            'sales': sold,
+            'sales': sold,  # ← теперь просто float, а не список
             'spoilage_kg': spoiled_kg,
             'spoilage_money': spoiled_money,
             'order': order,
