@@ -1,7 +1,6 @@
 from datetime import datetime, timedelta
 import random
 from core.product import Product, Batch
-from core.spoilage import WeeklySpoilage
 from core.probabilistic_spoilage import ProbabilisticWeeklySpoilage
 
 class Tomatoes(Product):
