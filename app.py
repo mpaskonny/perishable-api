@@ -639,7 +639,20 @@ if run_button:
             with st.expander("📋 Детальная история"):
                 st.dataframe(df, use_container_width=True)
 
+        except requests.Timeout:
+            st.error("⏰ Превышено время ожидания от сервера (30 секунд)")
+            st.info("Попробуйте уменьшить количество дней симуляции")
+        except requests.ConnectionError:
+            st.error("🔌 Не удалось подключиться к серверу")
+            st.info("Убедитесь, что FastAPI сервер запущен: python main.py")
+        except requests.HTTPError as e:
+            st.error(f"❌ Ошибка сервера: {e}")
+            if response.status_code == 500:
+                st.info("Проверьте консоль с запущенным API для деталей")
+        except json.JSONDecodeError:
+            st.error("❌ Ошибка: Сервер вернул некорректный ответ")
         except Exception as e:
-            st.error(f"❌ Ошибка: {str(e)}")
+            st.error(f"❌ Неожиданная ошибка: {str(e)}")
+            st.info("Проверьте что API запущен и параметры корректны")
 else:
     st.info("👈 Настройте параметры слева и нажмите 'Запустить симуляцию'")

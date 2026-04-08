@@ -142,8 +142,8 @@ class Product(ABC):
                 order = self.delivery.calculate_order(
                     total_stock, 
                     self.min_stock, 
-                    self.delivery_type,  # ← используем поле
-                    self.box_size        # ← используем поле
+                    self.delivery_type,  
+                    self.box_size        
                 )
                 if order > 0:
                     self._add_batch(current_date, order)
@@ -230,3 +230,4 @@ class Product(ABC):
             },
             'spoilage_stats': spoilage_stats
         }
+    

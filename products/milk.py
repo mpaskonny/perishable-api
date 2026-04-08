@@ -28,21 +28,13 @@ class Milk(Product):
         self.shelf_life_days = shelf_life_days
     
     def init_batches(self, start_date: datetime):
-        """
-        Инициализация начальных партий молока
-        Создаем партии с разным сроком годности
-        """
-        self.batches = []
-        
-        # Партия 1: поступила за 5 дней до старта, срок 10 дней
-        batch1_arrival = start_date - timedelta(days=5)
-        batch1_expiry = batch1_arrival + timedelta(days=self.shelf_life_days)
-        self.batches.append(Batch(batch1_arrival, 100, batch1_expiry))
-        
-        # Партия 2: поступила за 2 дня до старта, срок 10 дней
-        batch2_arrival = start_date - timedelta(days=2)
-        batch2_expiry = batch2_arrival + timedelta(days=self.shelf_life_days)
-        self.batches.append(Batch(batch2_arrival, 60, batch2_expiry))
+        """Инициализация начальных партий молока с учетом даты старта"""
+        self.batches = [
+            Batch(start_date - timedelta(days=5), 100, 
+                start_date + timedelta(days=self.shelf_life_days - 5)),
+            Batch(start_date - timedelta(days=2), 60,
+                start_date + timedelta(days=self.shelf_life_days - 2))
+        ]
     
     def _add_batch(self, current_date: datetime, quantity: float):
         expiry_date = current_date + timedelta(days=self.shelf_life_days)

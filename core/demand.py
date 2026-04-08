@@ -44,9 +44,9 @@ class FixedDemand(DemandStrategy):
         self.demand_list = demand_list
         self.day = 0
     
-    def get_demand(self, date, weekday_factors=None):
+    def get_demand(self, date=None, weekday_factors=None):
         if self.day < len(self.demand_list):
             demand = self.demand_list[self.day]
             self.day += 1
             return demand
-        return 20  # значение по умолчанию
+        return 20  
