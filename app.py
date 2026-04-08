@@ -577,6 +577,7 @@ if run_button:
             with st.expander("📋 Детальная история"):
                 df_display = df.copy()
                 
+                # Удаляем служебные колонки
                 columns_to_drop = []
                 if 'fifo_sales' in df_display.columns:
                     columns_to_drop.append('fifo_sales')
@@ -586,12 +587,20 @@ if run_button:
                     columns_to_drop.append('total_sales')
                 if 'life_sales' in df_display.columns:
                     columns_to_drop.append('life_sales')
+                if 'spoilage_money' in df_display.columns:
+                    columns_to_drop.append('spoilage_money')
                 
                 if columns_to_drop:
                     df_display = df_display.drop(columns=columns_to_drop)
                 
                 # РАЗНЫЕ КОЛОНКИ ДЛЯ МОЛОКА И ПОМИДОРОВ
                 if product == "milk":
+                    # Для молока: убираем недельные колонки (они None)
+                    milk_columns_to_drop = ['stock_week1', 'stock_week2', 'stock_week3']
+                    existing_milk_drop = [c for c in milk_columns_to_drop if c in df_display.columns]
+                    if existing_milk_drop:
+                        df_display = df_display.drop(columns=existing_milk_drop)
+                    
                     column_names = {
                         'day': 'День',
                         'date': 'Дата',
@@ -605,14 +614,24 @@ if run_button:
                         'utilization_cost': 'Затраты на утилизацию (руб)',
                         'end_stock': 'Остаток на конец (пакеты)',
                         'fifo_percent': 'FIFO %',
-                        'lifo_percent': 'LIFO %',
-                        'batch_1_stock': 'Партия 1 (старая)',
-                        'batch_2_stock': 'Партия 2',
-                        'batch_3_stock': 'Партия 3',
-                        'batch_4_stock': 'Партия 4',
-                        'batch_5_stock': 'Партия 5 (свежая)'
+                        'lifo_percent': 'LIFO %'
                     }
+                    
+                    # Добавляем партии (только если они есть в данных)
+                    batch_columns = ['batch_1_stock', 'batch_2_stock', 'batch_3_stock', 'batch_4_stock', 'batch_5_stock']
+                    for i, col in enumerate(batch_columns, 1):
+                        if col in df_display.columns:
+                            column_names[col] = f'Партия {i}'
+                    
                 else:  # tomatoes
+                    # Удаляем колонки молока
+                    milk_columns = ['fifo_percent', 'lifo_percent', 'utilization_cost', 
+                                    'batch_1_stock', 'batch_2_stock', 'batch_3_stock', 
+                                    'batch_4_stock', 'batch_5_stock', 'fifo_sales', 'lifo_sales']
+                    for col in milk_columns:
+                        if col in df_display.columns:
+                            df_display = df_display.drop(columns=[col])
+                    
                     column_names = {
                         'day': 'День',
                         'date': 'Дата',
@@ -629,6 +648,7 @@ if run_button:
                         'stock_week3': 'Остаток 15+ дней (кг)'
                     }
                 
+                # Применяем переименование
                 existing_columns = {k: v for k, v in column_names.items() if k in df_display.columns}
                 df_display = df_display.rename(columns=existing_columns)
                 
@@ -646,8 +666,10 @@ if run_button:
                         week3_mean = spoilage_stats.get('week3_mean', 0)
                         st.caption(f"📊 Средний процент порчи: 1-я неделя: {week1_mean:.1f}% | 2-я неделя: {week2_mean:.1f}% | 3-я неделя: {week3_mean:.1f}%")
                 
+                # Отображаем таблицу
                 st.dataframe(df_display, use_container_width=True)
                 
+                # Кнопка для скачивания CSV
                 csv = df_display.to_csv(index=False).encode('utf-8-sig')
                 st.download_button(
                     label="📥 Скачать таблицу (CSV)",

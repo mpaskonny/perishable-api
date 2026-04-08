@@ -221,6 +221,9 @@ class Product(ABC):
             
             spoiled_kg, spoiled_money = self._process_spoilage(current_date)
             
+            self.total_spoilage_kg += spoiled_kg
+            self.total_spoilage_money += spoiled_money
+
             self.batches = [b for b in self.batches if b.quantity > 0]
             
             self._record_day(day, current_date, demand, sold, revenue, spoiled_kg, spoiled_money,
