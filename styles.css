@@ -1,0 +1,159 @@
+/* Основной фон */
+.stApp {
+    background-color: #1a1a2e;
+}
+
+/* Заголовки */
+.main-title {
+    font-size: 3rem;
+    font-weight: bold;
+    text-align: center;
+    background: linear-gradient(135deg, #e94560, #533483);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 0.5rem;
+}
+
+.subtitle {
+    font-size: 1.1rem;
+    text-align: center;
+    color: #a0a0b0;
+    margin-bottom: 2rem;
+}
+
+.section-title {
+    color: #e94560;
+    margin-bottom: 1rem;
+    font-size: 1.6rem;
+    font-weight: 600;
+}
+
+/* Карточки */
+.feature-card {
+    background-color: #16213e;
+    padding: 1.5rem;
+    border-radius: 15px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    height: 100%;
+    transition: transform 0.2s;
+    border: 1px solid #2a2a4a;
+}
+
+.feature-card:hover {
+    transform: translateY(-5px);
+    border-color: #e94560;
+}
+
+.feature-title {
+    font-size: 1.4rem;
+    font-weight: bold;
+    margin-bottom: 1rem;
+    text-align: center;
+    color: #e94560;
+}
+
+.feature-card ul {
+    color: #c0c0d0;
+    padding-left: 1.2rem;
+}
+
+.feature-card li {
+    margin-bottom: 0.5rem;
+}
+
+/* Шаги */
+.step-number {
+    display: inline-block;
+    width: 32px;
+    height: 32px;
+    background: linear-gradient(135deg, #e94560, #533483);
+    color: white;
+    border-radius: 50%;
+    text-align: center;
+    line-height: 32px;
+    font-weight: bold;
+    margin-right: 12px;
+}
+
+.step-text {
+    color: #c0c0d0;
+}
+
+.steps-container {
+    background-color: #16213e;
+    padding: 1.5rem;
+    border-radius: 15px;
+    border: 1px solid #2a2a4a;
+}
+
+/* Баннер */
+.welcome-banner {
+    background: linear-gradient(135deg, #16213e, #1a1a2e);
+    padding: 1.2rem;
+    border-radius: 15px;
+    margin-bottom: 2rem;
+    border-left: 4px solid #e94560;
+    color: #c0c0d0;
+}
+
+.welcome-banner h3 {
+    color: #e94560;
+    margin: 0;
+}
+
+/* Текст */
+.about-text {
+    color: #c0c0d0;
+    font-size: 1rem;
+    line-height: 1.6;
+    background-color: #16213e;
+    padding: 1rem;
+    border-radius: 10px;
+}
+
+/* Футер */
+.footer {
+    text-align: center;
+    padding: 2rem;
+    color: #6a6a80;
+    font-size: 0.8rem;
+    border-top: 1px solid #2a2a4a;
+    margin-top: 2rem;
+}
+
+/* Демо-блок */
+.stat-demo {
+    background: linear-gradient(135deg, #16213e, #1a1a2e);
+    border-radius: 15px;
+    padding: 1rem;
+    text-align: center;
+    border: 1px solid #2a2a4a;
+}
+
+.stat-demo .stat-value {
+    color: #e94560;
+    font-weight: bold;
+    font-size: 1.2rem;
+}
+
+/* Ссылки */
+a {
+    color: #e94560 !important;
+    text-decoration: none;
+}
+
+/* Кнопки в боковой панели */
+.stButton button {
+    background-color: #16213e;
+    color: #c0c0d0;
+    border: 1px solid #2a2a4a;
+    border-radius: 10px;
+    transition: all 0.2s;
+}
+
+.stButton button:hover {
+    background: linear-gradient(135deg, #e94560, #533483);
+    color: white;
+    border-color: #e94560;
+}
