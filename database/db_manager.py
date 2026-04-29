@@ -185,3 +185,19 @@ class DatabaseManager:
 
     def get_all_experiments(self) -> pd.DataFrame:
         return pd.read_sql_query("SELECT * FROM experiments ORDER BY id_experiment DESC", self._get_connection())
+
+    def experiment_exists(self, data: dict) -> bool:
+        """Проверяет, существует ли эксперимент с такими же параметрами"""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT COUNT(*) FROM experiments 
+                WHERE product_name = ? AND distribution = ? AND days = ? 
+                AND min_stock = ? AND purchase_price = ? AND sale_price = ?
+            """, (
+                data['product_name'], data['distribution'], data['days'],
+                data['min_stock'], data['purchase_price'], data['sale_price']
+            ))
+            count = cursor.fetchone()[0]
+            return count > 0
+    

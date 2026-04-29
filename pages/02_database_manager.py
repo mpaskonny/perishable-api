@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import sqlite3
 from database.db_manager import DatabaseManager
 from sidebar_config import setup_sidebar
 
@@ -125,8 +126,63 @@ with tab2:
 # ИСТОРИЯ ЭКСПЕРИМЕНТОВ
 with tab3:
     st.subheader("Сохранённые симуляции")
+    
+    # Кнопка очистки
+    col1, col2 = st.columns([4, 1])
+    with col2:
+        if st.button("🗑️ Очистить всё", type="secondary"):
+            with sqlite3.connect("database/perishable.db") as conn:
+                conn.execute("DELETE FROM experiments")
+                conn.execute("DELETE FROM sqlite_sequence WHERE name='experiments'")
+            st.success("✅ Все эксперименты удалены!")
+            st.rerun()
+    
     exp_df = db.get_all_experiments()
     if not exp_df.empty:
-        st.dataframe(exp_df.drop(columns=['id_experiment'], errors='ignore'), use_container_width=True)
+        # Переименовываем колонки на русский язык
+        exp_df_display = exp_df.rename(columns={
+            'id_experiment': 'ID',
+            'product_name': 'Товар',
+            'distribution': 'Распределение',
+            'days': 'Дни',
+            'fifo_percent': 'FIFO %',
+            'min_stock': 'Мин. запас',
+            'purchase_price': 'Цена закупки',
+            'sale_price': 'Цена продажи',
+            'delivery_type': 'Тип поставок',
+            'delivery_frequency': 'Периодичность',
+            'delivery_days': 'Дни поставок',
+            'packing_type': 'Тип упаковки',
+            'box_size': 'Размер упаковки',
+            'total_revenue': 'Выручка',
+            'total_cost': 'Затраты',
+            'total_spoilage_kg': 'Потери (кг)',
+            'total_spoilage_money': 'Потери (руб)',
+            'profit': 'Прибыль',
+            'total_unmet_demand': 'Неудовлетворённый спрос'
+        })
+        
+        # Преобразуем значения для читаемости
+        exp_df_display['Тип поставок'] = exp_df_display['Тип поставок'].map({
+            'periodic': 'Периодические',
+            'days_of_week': 'По дням недели'
+        })
+        exp_df_display['Тип упаковки'] = exp_df_display['Тип упаковки'].map({
+            'unit': 'Штучно',
+            'box': 'Коробками/ящиками'
+        })
+        exp_df_display['Распределение'] = exp_df_display['Распределение'].map({
+            'uniform': 'Равномерный',
+            'normal': 'Нормальный'
+        })
+        
+        # Сортируем по ID в обратном порядке (сначала новые)
+        exp_df_display = exp_df_display.sort_values('ID', ascending=False)
+        
+        # Отображаем таблицу с ID
+        st.dataframe(exp_df_display, use_container_width=True)
+        
+        # Показываем количество записей
+        st.caption(f"📊 Всего экспериментов: {len(exp_df_display)}")
     else:
         st.info("Нет сохранённых экспериментов. После симуляции нажмите «Сохранить результат».")
