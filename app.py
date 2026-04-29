@@ -6,11 +6,34 @@ st.set_page_config(
     layout="wide"
 )
 
+# Фикс ширины страницы через JavaScript
+st.markdown("""
+    <script>
+        function fixWidth() {
+            const container = document.querySelector('.main .block-container');
+            if (container) {
+                container.style.maxWidth = '100%';
+                container.style.paddingLeft = '2rem';
+                container.style.paddingRight = '2rem';
+            }
+            const sidebar = document.querySelector('section[data-testid="stSidebar"]');
+            if (sidebar) {
+                sidebar.style.width = '280px';
+            }
+        }
+        setTimeout(fixWidth, 100);
+        setTimeout(fixWidth, 300);
+        setTimeout(fixWidth, 600);
+    </script>
+""", unsafe_allow_html=True)
+
 # Устанавливаем параметр ДО загрузки боковой панели
 if "page" not in st.query_params:
     st.query_params["page"] = "home"
 
 from sidebar_config import setup_sidebar
+
+
 
 # Загрузка единых стилей
 with open("styles.css", "r", encoding="utf-8") as f:

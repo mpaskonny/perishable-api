@@ -3,6 +3,22 @@
     background-color: #1a1a2e;
 }
 
+/* Принудительное растяжение на всю ширину */
+.stApp > header {
+    background-color: #1a1a2e;
+}
+
+.main .block-container {
+    max-width: 100% !important;
+    padding-left: 2rem !important;
+    padding-right: 2rem !important;
+    width: 100% !important;
+}
+
+section.main > div {
+    max-width: 100% !important;
+}
+
 /* Заголовки */
 .main-title {
     font-size: 3rem;
@@ -129,6 +145,7 @@
     padding: 1rem;
     text-align: center;
     border: 1px solid #2a2a4a;
+    color: #c0c0d0;
 }
 
 .stat-demo .stat-value {
@@ -150,10 +167,22 @@ a {
     border: 1px solid #2a2a4a;
     border-radius: 10px;
     transition: all 0.2s;
+    width: 100%;
 }
 
 .stButton button:hover {
     background: linear-gradient(135deg, #e94560, #533483);
     color: white;
     border-color: #e94560;
+}
+
+/* Скрываем кнопку сворачивания боковой панели */
+[data-testid="collapsedControl"] {
+    display: none !important;
+}
+
+/* Боковая панель фиксированной ширины */
+section[data-testid="stSidebar"] {
+    min-width: 280px !important;
+    width: 280px !important;
 }
