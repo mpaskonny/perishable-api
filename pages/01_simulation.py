@@ -436,7 +436,8 @@ if run_button:
             "start_date": datetime(2026, 2, 1).isoformat(),
             "delivery_schedule_type": delivery_schedule_type,
             "delivery_frequency": delivery_frequency,
-            "delivery_days": ",".join(map(str, delivery_days)) if delivery_days else None
+            "delivery_days": ",".join(map(str, delivery_days)) if delivery_days else None,
+            "product_name": selected_product_name
         }
 
         if product_category == "strict":

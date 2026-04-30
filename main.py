@@ -6,29 +6,33 @@ from core.customer import FixedCustomerStrategy, NormalCustomerStrategy
 from core.delivery import PeriodicDelivery, DaysOfWeekDelivery
 from products.milk import Milk
 from products.tomatoes import Tomatoes
+from database.db_manager import DatabaseManager
 
 
 # ========== КОНСТАНТЫ ==========
+# Молоко - параметры спроса
 MILK_UNIFORM_MIN = 20
 MILK_UNIFORM_MAX = 30
 MILK_NORMAL_MEAN = 25
 MILK_NORMAL_SIGMA = 1.41
 
+# Помидоры - параметры спроса
 TOMATOES_UNIFORM_MIN = 150
 TOMATOES_UNIFORM_MAX = 200
 TOMATOES_NORMAL_MEAN = 175
 TOMATOES_NORMAL_SIGMA = 14.91
 
+# Молоко - параметры покупателей
 MILK_CUSTOMER_SIGMA = 1.51
 
-TOMATOES_WEEK1_RATE = 10.0
-TOMATOES_WEEK2_RATE = 50.0
-TOMATOES_WEEK3_RATE = 100.0
-TOMATOES_WEEK1_SIGMA = 0.96
-TOMATOES_WEEK2_SIGMA = 1.59
+# Параметры порчи по умолчанию (если нет в БД)
+DEFAULT_WEEKLY_RATES = {1: 10.0, 2: 50.0, 3: 100.0}
+DEFAULT_SPOILAGE_SIGMA = 2.0
 
+# Коэффициенты дней недели по умолчанию
 DEFAULT_WEEKDAY_FACTORS = [0.8, 0.6, 0.9, 1.0, 1.3, 1.5, 1.1]
 
+# Молоко - параметры по умолчанию
 DEFAULT_SHELF_LIFE_DAYS = 10
 DEFAULT_UTILIZATION_PRICE = 5.0
 
@@ -51,6 +55,7 @@ app.add_middleware(
 def create_product(params: SimulationParams):
     """Фабрика для создания продукта"""
     
+    # Стратегия спроса
     if params.fixed_demand:
         demand_strategy = FixedDemand(params.fixed_demand)
         customer_strategy = FixedCustomerStrategy()
@@ -60,7 +65,7 @@ def create_product(params: SimulationParams):
         else:
             demand_strategy = UniformDemand(TOMATOES_UNIFORM_MIN, TOMATOES_UNIFORM_MAX)
         customer_strategy = FixedCustomerStrategy()
-    else:
+    else:  # normal
         if params.product_type == "milk":
             demand_strategy = NormalDemand(MILK_NORMAL_MEAN, MILK_NORMAL_SIGMA)
             sigma_buyer = params.sigma_buyer if params.sigma_buyer is not None else MILK_CUSTOMER_SIGMA
@@ -69,8 +74,13 @@ def create_product(params: SimulationParams):
             demand_strategy = NormalDemand(TOMATOES_NORMAL_MEAN, TOMATOES_NORMAL_SIGMA)
             customer_strategy = FixedCustomerStrategy()
     
+    # Коэффициенты дней недели (для обоих продуктов)
     weekday_factors = params.weekday_factors if params.weekday_factors else DEFAULT_WEEKDAY_FACTORS
     
+    # Инициализация БД для получения параметров порчи
+    db = DatabaseManager()
+    
+    # Стратегия поставок
     if params.product_type == "milk":
         if params.milk_delivery_frequency and params.milk_delivery_frequency > 0:
             delivery_strategy = PeriodicDelivery(params.milk_delivery_frequency)
@@ -92,12 +102,29 @@ def create_product(params: SimulationParams):
             delivery_type=params.delivery_type or "unit",
             box_size=params.box_size or 0
         )
-    else:
+    else:  # tomatoes
+        # Помидоры - подневная симуляция с настраиваемой периодичностью поставок
         if params.tomatoes_delivery_frequency and params.tomatoes_delivery_frequency > 0:
             delivery_strategy = PeriodicDelivery(params.tomatoes_delivery_frequency)
         else:
             delivery_days = params.tomatoes_delivery_days if params.tomatoes_delivery_days is not None else []
             delivery_strategy = DaysOfWeekDelivery(delivery_days)
+        
+        # Получаем параметры порчи из БД (любое количество недель)
+        weekly_rates = DEFAULT_WEEKLY_RATES.copy()
+        spoilage_sigma = DEFAULT_SPOILAGE_SIGMA
+        
+        if params.product_name:
+            product_data = db.get_product_by_name(params.product_name)
+            if product_data:
+                product_id = product_data['id_product']
+                spoilage_rates_df = db.get_spoilage_rates(product_id)
+                if not spoilage_rates_df.empty:
+                    weekly_rates = {}
+                    for _, row in spoilage_rates_df.iterrows():
+                        week = int(row['week_number'])
+                        rate = float(row['rate'])
+                        weekly_rates[week] = rate
         
         return Tomatoes(
             name="Помидоры",
@@ -107,19 +134,12 @@ def create_product(params: SimulationParams):
             demand_strategy=demand_strategy,
             customer_strategy=customer_strategy,
             delivery_strategy=delivery_strategy,
-            week_rates={
-                1: TOMATOES_WEEK1_RATE, 
-                2: TOMATOES_WEEK2_RATE, 
-                3: TOMATOES_WEEK3_RATE
-            },
-            week_sigmas={
-                1: params.sigma_10 or TOMATOES_WEEK1_SIGMA, 
-                2: params.sigma_50 or TOMATOES_WEEK2_SIGMA
-            },
+            weekly_rates=weekly_rates,
+            sigma=spoilage_sigma,
             weekday_factors=weekday_factors,
             delivery_type=params.delivery_type or "unit",
-            box_size=params.box_size or 0,
-            interpolation='exponential'
+            box_size=params.box_size or 0
+#            interpolation='exponential'
         )
 
 
@@ -152,7 +172,6 @@ async def simulate(params: SimulationParams):
                     revenue=float(h['revenue']),
                     purchase_cost=float(h['purchase_cost']),
                     end_stock=float(h.get('end_stock', 0)),
-                    unmet_demand=float(h.get('unmet_demand', 0)),
                     fifo_percent=float(h.get('fifo_percent', 0)) if h.get('fifo_percent') else None,
                     lifo_percent=float(h.get('lifo_percent', 0)) if h.get('lifo_percent') else None,
                     utilization_cost=float(h.get('utilization_cost', 0)) if h.get('utilization_cost') else None,
@@ -165,7 +184,7 @@ async def simulate(params: SimulationParams):
                     stock_week2=None,
                     stock_week3=None
                 ))
-            else:
+            else:  # tomatoes
                 daily_results.append(DailyResult(
                     day=h['day'],
                     date=h['date'],
@@ -176,7 +195,6 @@ async def simulate(params: SimulationParams):
                     order=float(round(h['order'], 2)),
                     revenue=float(h['revenue']),
                     purchase_cost=float(h['purchase_cost']),
-                    unmet_demand=float(h.get('unmet_demand', 0)),
                     end_stock=float(h.get('end_stock', 0)),
                     fifo_sales=0.0,
                     lifo_sales=0.0,

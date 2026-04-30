@@ -10,6 +10,7 @@ class SimulationParams(BaseModel):
     purchase_price: float = 220.0
     sale_price: float = 295.0
     
+    product_name: Optional[str] = None
     product_type: Optional[str] = "milk"
     distribution: Optional[str] = "uniform"
     start_date: datetime = datetime(2026, 2, 1)

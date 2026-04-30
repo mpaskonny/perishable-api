@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 from core.product import Product, Batch
-from core.smooth_spoilage import SmoothDailySpoilage
+from core.daily_spoilage_from_weekly import DailySpoilageFromWeekly
 
 
 class Tomatoes(Product):
@@ -12,17 +12,15 @@ class Tomatoes(Product):
                  demand_strategy,
                  customer_strategy,
                  delivery_strategy,
-                 week_rates: dict,
-                 week_sigmas: dict,
+                 weekly_rates: dict,      # ← читается из БД, может быть 2,3,4,6 недель
+                 sigma: float = 0.5,
                  weekday_factors=None,
                  delivery_type: str = "unit",
-                 box_size: int = 0,
-                 interpolation: str = "exponential"):
+                 box_size: int = 0):
         
-        spoilage_strategy = SmoothDailySpoilage(
-            weekly_rates=week_rates,
-            weekly_sigmas=week_sigmas,
-            interpolation=interpolation
+        spoilage_strategy = DailySpoilageFromWeekly(
+            weekly_rates=weekly_rates,
+            sigma=sigma
         )
         
         super().__init__(name, purchase_price, sale_price, min_stock,
@@ -30,14 +28,12 @@ class Tomatoes(Product):
                          delivery_strategy, weekday_factors, 0.0,
                          delivery_type, box_size)
         
-        self.week_rates = week_rates
-        self.week_sigmas = week_sigmas
+        self.weekly_rates = weekly_rates
+        self.sigma = sigma
         self.initial_stock = min_stock
     
     def init_batches(self, start_date: datetime):
-        self.batches = [
-            Batch(start_date, self.initial_stock)
-        ]
+        self.batches = [Batch(start_date, self.initial_stock)]
     
     def _add_batch(self, current_date: datetime, quantity: float):
         self.batches.append(Batch(current_date, quantity))
