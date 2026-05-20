@@ -43,6 +43,7 @@ app = FastAPI(
     version="2.0.0"
 )
 
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -157,7 +158,7 @@ async def simulate(params: SimulationParams):
     try:
         product = create_product(params)
         results = product.run(params.days, params.start_date, params.fifo_percent, params.lifo_percent)
-        
+
         daily_results = []
         for h in results['daily_history']:
             if params.product_type == "milk":
@@ -196,6 +197,7 @@ async def simulate(params: SimulationParams):
                     revenue=float(h['revenue']),
                     purchase_cost=float(h['purchase_cost']),
                     end_stock=float(h.get('end_stock', 0)),
+                    unmet_demand=float(h.get('unmet_demand', 0)),
                     fifo_sales=0.0,
                     lifo_sales=0.0,
                     stock_week1=float(h.get('stock_week1', 0)),

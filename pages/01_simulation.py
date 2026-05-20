@@ -74,7 +74,6 @@ def display_simulation_results(results):
     days = results['days']
     min_stock = results['min_stock']
     
-
     # Кнопка сохранения (с защитой от дубликатов)
     col_save1, col_save2, col_save3 = st.columns([1, 2, 1])
     with col_save2:
@@ -98,7 +97,7 @@ def display_simulation_results(results):
                         'delivery_frequency': params.get('delivery_frequency'),
                         'delivery_days': params.get('delivery_days'),
                         'packing_type': params.get('delivery_type', 'unit'),
-                        'box_size': box_size if delivery_type == "box" else 0,
+                        'box_size': params.get('box_size', 0),
                         'total_revenue': data['total_revenue'],
                         'total_cost': data['total_cost'],
                         'total_spoilage_kg': data['total_spoilage_kg'],
@@ -155,9 +154,31 @@ def display_simulation_results(results):
     
     if not plot_df.empty and len(plot_df) > 0:
         fig = go.Figure()
-        fig.add_trace(go.Scatter(x=plot_df['День'], y=plot_df['Спрос'], mode='lines+markers', name='Спрос', line=dict(color='#2E86AB', width=3), marker=dict(size=6)))
-        fig.add_trace(go.Scatter(x=plot_df['День'], y=plot_df['Продажи'], mode='lines+markers', name='Продажи', line=dict(color='#E74C3C', width=3), marker=dict(size=6)))
-        fig.update_layout(title=f"Спрос vs Продажи ({distribution} распределение)", xaxis_title="День", yaxis_title="Количество (кг/пакеты)", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), margin=dict(t=50), hovermode='x unified', template='plotly_white')
+        fig.add_trace(go.Scatter(
+            x=plot_df['День'], 
+            y=plot_df['Спрос'], 
+            mode='lines+markers', 
+            name='Спрос', 
+            line=dict(color='#2E86AB', width=3),
+            marker=dict(color='#2E86AB', size=6)
+        ))
+        fig.add_trace(go.Scatter(
+            x=plot_df['День'], 
+            y=plot_df['Продажи'], 
+            mode='lines+markers', 
+            name='Продажи', 
+            line=dict(color='#E74C3C', width=3),
+            marker=dict(color='#E74C3C', size=6)
+        ))
+        fig.update_layout(
+            title=f"Спрос vs Продажи ({distribution} распределение)",
+            xaxis_title="День",
+            yaxis_title="Количество (кг/пакеты)",
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            margin=dict(t=50),
+            hovermode='x unified',
+            template='plotly_white'
+        )
         fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='lightgray')
         fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='lightgray')
         st.plotly_chart(fig, use_container_width=True)
@@ -171,10 +192,38 @@ def display_simulation_results(results):
         
         if not stock_df.empty and len(stock_df) > 0:
             fig_stock = go.Figure()
-            fig_stock.add_trace(go.Scatter(x=stock_df['День'], y=stock_df['Остаток на начало дня'], mode='lines+markers', name='Остаток на начало дня', line=dict(color='#3498DB', width=2), marker=dict(size=5)))
-            fig_stock.add_trace(go.Scatter(x=stock_df['День'], y=stock_df['Остаток на конец дня'], mode='lines+markers', name='Остаток на конец дня', line=dict(color='#2ECC71', width=3), marker=dict(size=6, color='#27AE60')))
-            fig_stock.add_hline(y=min_stock, line_dash="dash", line_color="red", annotation_text=f"Min запас: {min_stock}", annotation_position="bottom right")
-            fig_stock.update_layout(title=f"Динамика остатков ({distribution} распределение)", xaxis_title="День", yaxis_title="Остаток (кг/пакеты)", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), margin=dict(t=50), hovermode='x unified', template='plotly_white')
+            fig_stock.add_trace(go.Scatter(
+                x=stock_df['День'], 
+                y=stock_df['Остаток на начало дня'], 
+                mode='lines+markers', 
+                name='Остаток на начало дня', 
+                line=dict(color='#3498DB', width=2),
+                marker=dict(color='#3498DB', size=5)
+            ))
+            fig_stock.add_trace(go.Scatter(
+                x=stock_df['День'], 
+                y=stock_df['Остаток на конец дня'], 
+                mode='lines+markers', 
+                name='Остаток на конец дня', 
+                line=dict(color='#2ECC71', width=3),
+                marker=dict(color='#27AE60', size=6)
+            ))
+            fig_stock.add_hline(
+                y=min_stock, 
+                line_dash="dash", 
+                line_color="red", 
+                annotation_text=f"Min запас: {min_stock}", 
+                annotation_position="bottom right"
+            )
+            fig_stock.update_layout(
+                title=f"Динамика остатков ({distribution} распределение)",
+                xaxis_title="День",
+                yaxis_title="Остаток (кг/пакеты)",
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                margin=dict(t=50),
+                hovermode='x unified',
+                template='plotly_white'
+            )
             st.plotly_chart(fig_stock, use_container_width=True)
     else:
         st.warning("Нет данных для графика")
@@ -186,7 +235,13 @@ def display_simulation_results(results):
         st.subheader("📊 Анализ распределений (Молоко)")
         col1, col2 = st.columns(2)
         with col1:
-            fig_hist_demand = px.histogram(df, x='demand', nbins=15, title=f"Распределение спроса ({distribution})", labels={'demand': 'Спрос (пакеты)', 'count': 'Частота'}, opacity=0.8, color_discrete_sequence=['#2E86AB'])
+            fig_hist_demand = px.histogram(
+                df, x='demand', nbins=15,
+                title=f"Распределение спроса ({distribution})",
+                labels={'demand': 'Спрос (пакеты)', 'count': 'Частота'},
+                opacity=0.8, color_discrete_sequence=['#2E86AB'],
+                template='plotly_white'
+            )
             fig_hist_demand.add_vline(x=df['demand'].mean(), line_dash="dash", line_color="red", annotation_text=f"Среднее: {df['demand'].mean():.2f}", annotation_position="top")
             st.plotly_chart(fig_hist_demand, use_container_width=True)
         with col2:
@@ -199,7 +254,13 @@ def display_simulation_results(results):
                 fifo_rates = data['spoilage_stats']['fifo_rates']
                 if fifo_rates:
                     expected_fifo = params.get('fifo_percent', 75)
-                    fig_hist_fifo = px.histogram(x=fifo_rates, nbins=15, title=f"FIFO (ожидаемый {expected_fifo}%)", labels={'x': 'Процент покупателей (%)', 'count': 'Частота'}, opacity=0.8, color_discrete_sequence=['#27AE60'])
+                    fig_hist_fifo = px.histogram(
+                        x=fifo_rates, nbins=15,
+                        title=f"FIFO (ожидаемый {expected_fifo}%)",
+                        labels={'x': 'Процент покупателей (%)', 'count': 'Частота'},
+                        opacity=0.8, color_discrete_sequence=['#27AE60'],
+                        template='plotly_white'
+                    )
                     fig_hist_fifo.add_vline(x=expected_fifo, line_dash="dash", line_color="red", annotation_text=f"Ожид. {expected_fifo}%", annotation_position="top")
                     fig_hist_fifo.add_vline(x=np.mean(fifo_rates), line_dash="solid", line_color="#27AE60", annotation_text=f"Ср: {np.mean(fifo_rates):.2f}%", annotation_position="bottom")
                     st.plotly_chart(fig_hist_fifo, use_container_width=True)
@@ -208,7 +269,13 @@ def display_simulation_results(results):
                 lifo_rates = data['spoilage_stats']['lifo_rates']
                 if lifo_rates:
                     expected_lifo = 100 - params.get('fifo_percent', 25)
-                    fig_hist_lifo = px.histogram(x=lifo_rates, nbins=15, title=f"LIFO (ожидаемый {expected_lifo}%)", labels={'x': 'Процент покупателей (%)', 'count': 'Частота'}, opacity=0.8, color_discrete_sequence=['#E74C3C'])
+                    fig_hist_lifo = px.histogram(
+                        x=lifo_rates, nbins=15,
+                        title=f"LIFO (ожидаемый {expected_lifo}%)",
+                        labels={'x': 'Процент покупателей (%)', 'count': 'Частота'},
+                        opacity=0.8, color_discrete_sequence=['#E74C3C'],
+                        template='plotly_white'
+                    )
                     fig_hist_lifo.add_vline(x=expected_lifo, line_dash="dash", line_color="red", annotation_text=f"Ожид. {expected_lifo}%", annotation_position="top")
                     fig_hist_lifo.add_vline(x=np.mean(lifo_rates), line_dash="solid", line_color="#E74C3C", annotation_text=f"Ср: {np.mean(lifo_rates):.2f}%", annotation_position="bottom")
                     st.plotly_chart(fig_hist_lifo, use_container_width=True)
@@ -216,7 +283,13 @@ def display_simulation_results(results):
         st.subheader("📊 Анализ распределений (Помидоры)")
         col1, col2 = st.columns(2)
         with col1:
-            fig_hist_demand = px.histogram(df, x='demand', nbins=15, title=f"Распределение спроса ({distribution})", labels={'demand': 'Спрос (кг)', 'count': 'Частота'}, opacity=0.8, color_discrete_sequence=['#A23B72'])
+            fig_hist_demand = px.histogram(
+                df, x='demand', nbins=15,
+                title=f"Распределение спроса ({distribution})",
+                labels={'demand': 'Спрос (кг)', 'count': 'Частота'},
+                opacity=0.8, color_discrete_sequence=['#A23B72'],
+                template='plotly_white'
+            )
             fig_hist_demand.add_vline(x=df['demand'].mean(), line_dash="dash", line_color="red", annotation_text=f"Среднее: {df['demand'].mean():.2f}", annotation_position="top")
             st.plotly_chart(fig_hist_demand, use_container_width=True)
         st.markdown("---")
@@ -226,21 +299,39 @@ def display_simulation_results(results):
         with col1:
             week1_rates = spoilage_stats.get('week1_rates', spoilage_stats.get('week10_rates', []))
             if week1_rates:
-                fig1 = px.histogram(x=week1_rates, nbins=15, title="1-я неделя (базовый 10%)", labels={'x': 'Процент порчи (%)', 'count': 'Частота'}, opacity=0.8, color_discrete_sequence=['#3498DB'])
+                fig1 = px.histogram(
+                    x=week1_rates, nbins=15,
+                    title="1-я неделя (базовый 10%)",
+                    labels={'x': 'Процент порчи (%)', 'count': 'Частота'},
+                    opacity=0.8, color_discrete_sequence=['#3498DB'],
+                    template='plotly_white'
+                )
                 fig1.add_vline(x=10.0, line_dash="dash", line_color="red", annotation_text="10%")
                 fig1.add_vline(x=spoilage_stats.get('week1_mean', np.mean(week1_rates)), line_dash="solid", line_color="#3498DB", annotation_text=f"Ср: {spoilage_stats.get('week1_mean', np.mean(week1_rates)):.1f}%")
                 st.plotly_chart(fig1, use_container_width=True)
         with col2:
             week2_rates = spoilage_stats.get('week2_rates', spoilage_stats.get('week50_rates', []))
             if week2_rates:
-                fig2 = px.histogram(x=week2_rates, nbins=15, title="2-я неделя (базовый 50%)", labels={'x': 'Процент порчи (%)', 'count': 'Частота'}, opacity=0.8, color_discrete_sequence=['#F39C12'])
+                fig2 = px.histogram(
+                    x=week2_rates, nbins=15,
+                    title="2-я неделя (базовый 50%)",
+                    labels={'x': 'Процент порчи (%)', 'count': 'Частота'},
+                    opacity=0.8, color_discrete_sequence=['#F39C12'],
+                    template='plotly_white'
+                )
                 fig2.add_vline(x=50.0, line_dash="dash", line_color="red", annotation_text="50%")
                 fig2.add_vline(x=spoilage_stats.get('week2_mean', np.mean(week2_rates)), line_dash="solid", line_color="#F39C12", annotation_text=f"Ср: {spoilage_stats.get('week2_mean', np.mean(week2_rates)):.1f}%")
                 st.plotly_chart(fig2, use_container_width=True)
         with col3:
             week3_rates = spoilage_stats.get('week3_rates', [])
             if week3_rates:
-                fig3 = px.histogram(x=week3_rates, nbins=15, title="3-я неделя (базовый 100%)", labels={'x': 'Процент порчи (%)', 'count': 'Частота'}, opacity=0.8, color_discrete_sequence=['#E74C3C'])
+                fig3 = px.histogram(
+                    x=week3_rates, nbins=15,
+                    title="3-я неделя (базовый 100%)",
+                    labels={'x': 'Процент порчи (%)', 'count': 'Частота'},
+                    opacity=0.8, color_discrete_sequence=['#E74C3C'],
+                    template='plotly_white'
+                )
                 fig3.add_vline(x=100.0, line_dash="dash", line_color="red", annotation_text="100%")
                 fig3.add_vline(x=spoilage_stats.get('week3_mean', np.mean(week3_rates)), line_dash="solid", line_color="#E74C3C", annotation_text=f"Ср: {spoilage_stats.get('week3_mean', np.mean(week3_rates)):.1f}%")
                 st.plotly_chart(fig3, use_container_width=True)
@@ -312,6 +403,7 @@ def display_simulation_results(results):
                 st.caption(f"📊 Средний процент порчи: 1-я неделя: {s.get('week1_mean', s.get('week10_mean', 0)):.1f}% | 2-я неделя: {s.get('week2_mean', s.get('week50_mean', 0)):.1f}% | 3-я неделя: {s.get('week3_mean', 0):.1f}%")
         
         existing_columns = {k: v for k, v in column_names.items() if k in df_display.columns}
+        df_display = df_display.fillna(0)
         df_display = df_display.rename(columns=existing_columns)
         st.dataframe(df_display, use_container_width=True)
         
@@ -434,9 +526,6 @@ if run_button:
             "distribution": distribution,
             "product_type": "milk" if product_category == "strict" else "tomatoes",
             "start_date": datetime(2026, 2, 1).isoformat(),
-            "delivery_schedule_type": delivery_schedule_type,
-            "delivery_frequency": delivery_frequency,
-            "delivery_days": ",".join(map(str, delivery_days)) if delivery_days else None,
             "product_name": selected_product_name
         }
 
@@ -446,6 +535,8 @@ if run_button:
             params["shelf_life_days"] = int(shelf_life_days) if shelf_life_days else 10
             params["utilization_price"] = 5.0
             params["sigma_buyer"] = 1.51
+            params["milk_delivery_frequency"] = delivery_frequency if delivery_schedule_type == "frequency" else 0
+            params["milk_delivery_days"] = delivery_days if delivery_days else []
         else:
             spoilage_rates = db.get_spoilage_rates(product_id)
             week_sigmas = {}
@@ -454,12 +545,14 @@ if run_button:
                 week_sigmas[week] = 0.96 if week == 1 else 1.59
             params["sigma_10"] = week_sigmas.get(1, 0.96)
             params["sigma_50"] = week_sigmas.get(2, 1.59)
-
+            params["tomatoes_delivery_frequency"] = delivery_frequency if delivery_schedule_type == "frequency" else 0
+            params["tomatoes_delivery_days"] = delivery_days if delivery_days else []
+        
         try:
             response = requests.post(f"{API_URL}/simulate", json=params)
             response.raise_for_status()
             data = response.json()
-            total_unmet = sum(day.get('unmet_demand', 0) for day in data['daily_history'])
+            total_unmet = sum(day.get('unmet_demand') or 0 for day in data['daily_history'])
 
             st.session_state.simulation_results = {
                 'data': data,

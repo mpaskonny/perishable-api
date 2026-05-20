@@ -63,6 +63,7 @@ class Product(ABC):
         total_stock = sum(b.quantity for b in self.batches)
         if total_stock == 0:
             return 0, 0, 0, 0, demand 
+
         fifo_wanted, lifo_wanted = self.customer.get_sales_distribution(
             demand, fifo_percent, lifo_percent
         )
@@ -201,6 +202,10 @@ class Product(ABC):
         })
     
     def run(self, days: int, start_date: datetime, fifo_percent: float, lifo_percent: float) -> Dict[str, Any]:
+
+        print(f"[DEBUG run] fifo_percent={fifo_percent} (тип: {type(fifo_percent).__name__})")
+        print(f"[DEBUG run] lifo_percent={lifo_percent} (тип: {type(lifo_percent).__name__})")
+
         self.init_batches(start_date)
         self.history = []
         self.fifo_rates = []
