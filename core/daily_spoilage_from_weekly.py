@@ -72,10 +72,6 @@ class DailySpoilageFromWeekly(SpoilageStrategy):
             actual_rate = max(0, min(100, actual_rate))
         else:
             actual_rate = target_rate
-        
-        # Временная отладка (первые 21 день)
-        if age_days <= 21:
-            print(f"[DEBUG] День {age_days}: target={target_rate:.2f}%, actual={actual_rate:.2f}%, sigma={self.sigma}")
 
         # Определяем неделю для статистики
         week = (age_days - 1) // 7 + 1
