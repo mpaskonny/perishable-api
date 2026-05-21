@@ -4,9 +4,11 @@ from models import SimulationParams, SimulationResponse, DailyResult
 from core.demand import UniformDemand, NormalDemand, FixedDemand
 from core.customer import FixedCustomerStrategy, NormalCustomerStrategy
 from core.delivery import PeriodicDelivery, DaysOfWeekDelivery
-from products.milk import Milk
-from products.tomatoes import Tomatoes
+from core.spoilage import StrictExpirySpoilage
+from core.simple_spoilage import LinearSpoilage, ExponentialSpoilage
+from core.product import Product
 from database.db_manager import DatabaseManager
+from datetime import datetime
 
 
 # ========== КОНСТАНТЫ ==========
@@ -25,24 +27,22 @@ TOMATOES_NORMAL_SIGMA = 14.91
 # Молоко - параметры покупателей
 MILK_CUSTOMER_SIGMA = 1.51
 
-# Параметры порчи по умолчанию (если нет в БД)
-DEFAULT_WEEKLY_RATES = {1: 10.0, 2: 50.0, 3: 100.0}
-DEFAULT_SPOILAGE_SIGMA = 2.0
+# Параметры экспоненциальной порчи по умолчанию
+DEFAULT_EXPONENTIAL_K = 0.15
 
 # Коэффициенты дней недели по умолчанию
 DEFAULT_WEEKDAY_FACTORS = [0.8, 0.6, 0.9, 1.0, 1.3, 1.5, 1.1]
 
-# Молоко - параметры по умолчанию
-DEFAULT_SHELF_LIFE_DAYS = 10
+# Параметры утилизации
 DEFAULT_UTILIZATION_PRICE = 5.0
+
 
 # ========== ПРИЛОЖЕНИЕ ==========
 app = FastAPI(
     title="Симулятор продуктов с ограниченным сроком годности",
-    description="Универсальный API для симуляции",
-    version="2.0.0"
+    description="Универсальный API для симуляции управления запасами",
+    version="3.0.0"
 )
-
 
 app.add_middleware(
     CORSMiddleware,
@@ -53,112 +53,128 @@ app.add_middleware(
 )
 
 
-def create_product(params: SimulationParams):
-    """Фабрика для создания продукта"""
+def create_product(params: SimulationParams) -> Product:
+    """
+    Фабрика для создания продукта с нужными стратегиями
+    """
+    # Получаем базовые параметры продукта из БД
+    db = DatabaseManager()
+    product_data = db.get_product_by_name(params.product_name)
     
-    # Стратегия спроса
+    if not product_data:
+        raise HTTPException(status_code=404, detail=f"Продукт '{params.product_name}' не найден в БД")
+    
+    category_id = product_data.get('id_category')
+    base_demand = product_data.get('base_demand', 100)
+    
+    # ========== 1. СТРАТЕГИЯ СПРОСА (из настроек симуляции) ==========
     if params.fixed_demand:
         demand_strategy = FixedDemand(params.fixed_demand)
         customer_strategy = FixedCustomerStrategy()
     elif params.distribution == "uniform":
-        if params.product_type == "milk":
-            demand_strategy = UniformDemand(MILK_UNIFORM_MIN, MILK_UNIFORM_MAX)
-        else:
-            demand_strategy = UniformDemand(TOMATOES_UNIFORM_MIN, TOMATOES_UNIFORM_MAX)
+        # Равномерный спрос: от 0.5x до 1.5x от базового
+        demand_strategy = UniformDemand(base_demand * 0.5, base_demand * 1.5)
         customer_strategy = FixedCustomerStrategy()
     else:  # normal
-        if params.product_type == "milk":
-            demand_strategy = NormalDemand(MILK_NORMAL_MEAN, MILK_NORMAL_SIGMA)
+        # Нормальный спрос: средний = базовый, sigma = 15% от среднего
+        demand_strategy = NormalDemand(base_demand, base_demand * 0.15)
+        if category_id == 1:  # strict (молоко)
             sigma_buyer = params.sigma_buyer if params.sigma_buyer is not None else MILK_CUSTOMER_SIGMA
             customer_strategy = NormalCustomerStrategy(sigma_buyer)
         else:
-            demand_strategy = NormalDemand(TOMATOES_NORMAL_MEAN, TOMATOES_NORMAL_SIGMA)
             customer_strategy = FixedCustomerStrategy()
     
-    # Коэффициенты дней недели (для обоих продуктов)
-    weekday_factors = params.weekday_factors if params.weekday_factors else DEFAULT_WEEKDAY_FACTORS
-    
-    # Инициализация БД для получения параметров порчи
-    db = DatabaseManager()
-    
-    # Стратегия поставок
-    if params.product_type == "milk":
+    # ========== 2. СТРАТЕГИЯ ПОСТАВОК ==========
+    if category_id == 1:  # strict (молоко)
         if params.milk_delivery_frequency and params.milk_delivery_frequency > 0:
             delivery_strategy = PeriodicDelivery(params.milk_delivery_frequency)
         else:
             delivery_days = params.milk_delivery_days if params.milk_delivery_days is not None else []
             delivery_strategy = DaysOfWeekDelivery(delivery_days)
-        
-        return Milk(
-            name="Молоко",
-            purchase_price=params.purchase_price,
-            sale_price=params.sale_price,
-            min_stock=params.min_stock,
-            demand_strategy=demand_strategy,
-            customer_strategy=customer_strategy,
-            delivery_strategy=delivery_strategy,
-            shelf_life_days=params.shelf_life_days or DEFAULT_SHELF_LIFE_DAYS,
-            utilization_price=params.utilization_price or DEFAULT_UTILIZATION_PRICE,
-            weekday_factors=weekday_factors,
-            delivery_type=params.delivery_type or "unit",
-            box_size=params.box_size or 0
-        )
-    else:  # tomatoes
-        # Помидоры - подневная симуляция с настраиваемой периодичностью поставок
+    else:  # gradual products
         if params.tomatoes_delivery_frequency and params.tomatoes_delivery_frequency > 0:
             delivery_strategy = PeriodicDelivery(params.tomatoes_delivery_frequency)
         else:
             delivery_days = params.tomatoes_delivery_days if params.tomatoes_delivery_days is not None else []
             delivery_strategy = DaysOfWeekDelivery(delivery_days)
+    
+    # ========== 3. СТРАТЕГИЯ ПОРЧИ (из настроек симуляции) ==========
+    if category_id == 1:  # strict (молоко)
+        spoilage_strategy = StrictExpirySpoilage()
+        is_strict = True
+        utilization_price = params.utilization_price or DEFAULT_UTILIZATION_PRICE
+    else:  # gradual
+        is_strict = False
+        utilization_price = 0.0
         
-        # Получаем параметры порчи из БД (любое количество недель)
-        weekly_rates = DEFAULT_WEEKLY_RATES.copy()
-        spoilage_sigma = DEFAULT_SPOILAGE_SIGMA
-        
-        if params.product_name:
-            product_data = db.get_product_by_name(params.product_name)
-            if product_data:
-                product_id = product_data['id_product']
-                spoilage_rates_df = db.get_spoilage_rates(product_id)
-                if not spoilage_rates_df.empty:
-                    weekly_rates = {}
-                    for _, row in spoilage_rates_df.iterrows():
-                        week = int(row['week_number'])
-                        rate = float(row['rate'])
-                        weekly_rates[week] = rate
-        
-        return Tomatoes(
-            name="Помидоры",
-            purchase_price=params.purchase_price,
-            sale_price=params.sale_price,
-            min_stock=params.min_stock,
-            demand_strategy=demand_strategy,
-            customer_strategy=customer_strategy,
-            delivery_strategy=delivery_strategy,
-            weekly_rates=weekly_rates,
-            sigma=spoilage_sigma,
-            weekday_factors=weekday_factors,
-            delivery_type=params.delivery_type or "unit",
-            box_size=params.box_size or 0
-#            interpolation='exponential'
-        )
+        if params.spoilage_type == "linear":
+            spoilage_strategy = LinearSpoilage(params.shelf_life_days)
+        else:  # exponential
+            k = params.exponential_k if params.exponential_k else DEFAULT_EXPONENTIAL_K
+            spoilage_strategy = ExponentialSpoilage(params.shelf_life_days, k)
+    
+    # ========== 4. КОЭФФИЦИЕНТЫ ДНЕЙ НЕДЕЛИ ==========
+    weekday_factors = params.weekday_factors if params.weekday_factors else DEFAULT_WEEKDAY_FACTORS
+    
+    # ========== 5. СОЗДАНИЕ ПРОДУКТА ==========
+    product = Product(
+        name=product_data['name'],
+        purchase_price=params.purchase_price or product_data['purchase_price'],
+        sale_price=params.sale_price or product_data['sale_price'],
+        min_stock=params.min_stock,
+        demand_strategy=demand_strategy,
+        spoilage_strategy=spoilage_strategy,
+        customer_strategy=customer_strategy,
+        delivery_strategy=delivery_strategy,
+        shelf_life_days=params.shelf_life_days or product_data.get('shelf_life_days', 30),
+        is_strict=is_strict,
+        weekday_factors=weekday_factors,
+        utilization_price=utilization_price,
+        delivery_type=params.delivery_type or "unit",
+        box_size=params.box_size or 0
+    )
+    
+    return product
 
 
 @app.get("/")
 async def root():
     return {
-        "message": "API симулятора продуктов",
-        "endpoints": ["/simulate", "/docs"]
+        "message": "API симулятора управления запасами",
+        "version": "3.0.0",
+        "endpoints": ["/simulate", "/docs"],
+        "features": [
+            "Строгая порча (молоко) - мгновенное списание после expiry_date",
+            "Линейная порча - равномерное старение",
+            "Экспоненциальная порча - ускоряющееся старение"
+        ]
     }
 
 
 @app.post("/simulate", response_model=SimulationResponse)
 async def simulate(params: SimulationParams):
-    """Универсальная симуляция"""
+    """
+    Универсальная симуляция управления запасами
+    
+    Поддерживает:
+    - Разные типы порчи (strict/linear/exponential)
+    - Разные законы спроса (uniform/normal)
+    - Разные стратегии поставок (periodic/days_of_week)
+    - FIFO/LIFO для строгих продуктов
+    """
     try:
+        # Создаём продукт с нужными стратегиями
         product = create_product(params)
-        results = product.run(params.days, params.start_date, params.fifo_percent, params.lifo_percent)
-
+        
+        # Запускаем симуляцию
+        results = product.run(
+            days=params.days, 
+            start_date=params.start_date, 
+            fifo_percent=params.fifo_percent or 100.0,  # Для gradual продуктов FIFO не используется
+            lifo_percent=params.lifo_percent or 0.0
+        )
+        
+        # Преобразуем историю в формат DailyResult
         daily_results = []
         for h in results['daily_history']:
             if params.product_type == "milk":
@@ -181,11 +197,9 @@ async def simulate(params: SimulationParams):
                     batch_3_stock=float(h.get('batch_3_stock', 0)) if h.get('batch_3_stock') else None,
                     batch_4_stock=float(h.get('batch_4_stock', 0)) if h.get('batch_4_stock') else None,
                     batch_5_stock=float(h.get('batch_5_stock', 0)) if h.get('batch_5_stock') else None,
-                    stock_week1=None,
-                    stock_week2=None,
-                    stock_week3=None
+                    unmet_demand=float(h.get('unmet_demand', 0))
                 ))
-            else:  # tomatoes
+            else:  # gradual products (tomatoes, etc.)
                 daily_results.append(DailyResult(
                     day=h['day'],
                     date=h['date'],
@@ -198,22 +212,22 @@ async def simulate(params: SimulationParams):
                     purchase_cost=float(h['purchase_cost']),
                     end_stock=float(h.get('end_stock', 0)),
                     unmet_demand=float(h.get('unmet_demand', 0)),
-                    fifo_sales=0.0,
-                    lifo_sales=0.0,
                     stock_week1=float(h.get('stock_week1', 0)),
                     stock_week2=float(h.get('stock_week2', 0)),
                     stock_week3=float(h.get('stock_week3', 0))
                 ))
         
+        # Формируем ответ
         return SimulationResponse(
             total_revenue=results['total_revenue'],
             total_cost=results['total_cost'],
             total_spoilage_kg=results['total_spoilage_kg'],
             total_spoilage_money=results['total_spoilage_money'],
             profit=results['profit'],
+            avg_stock=results['avg_stock'],
             daily_history=daily_results,
             demand_stats=results['demand_stats'],
-            spoilage_stats=results['spoilage_stats']
+            spoilage_stats=results.get('spoilage_stats', {})
         )
         
     except Exception as e:

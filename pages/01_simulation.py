@@ -93,6 +93,8 @@ def display_simulation_results(results):
                         'min_stock': min_stock,
                         'purchase_price': params['purchase_price'],
                         'sale_price': params['sale_price'],
+                        'shelf_life_days': params['shelf_life_days'],
+                        'spoilage_type': params['spoilage_type'],
                         'delivery_type': 'periodic' if params.get('delivery_schedule_type') == "frequency" else 'days_of_week',
                         'delivery_frequency': params.get('delivery_frequency'),
                         'delivery_days': params.get('delivery_days'),
@@ -121,7 +123,7 @@ def display_simulation_results(results):
         st.session_state.save_success = False
     
     # Отображение метрик
-    col1, col2, col3, col4, col5 = st.columns(5)
+    col1, col2, col3, col4, col5, col6 = st.columns(6)
     with col1:
         st.metric("Выручка", f"{data['total_revenue']:,.0f} руб")
     with col2:
@@ -132,6 +134,8 @@ def display_simulation_results(results):
         st.metric("Потери", f"{data['total_spoilage_kg']:.1f} кг")
     with col5:
         st.metric("Неудовлетворенный спрос", f"{total_unmet:.0f} кг")
+    with col6:
+        st.metric("Средний остаток", f"{data.get('avg_stock', 0):.1f} кг", help="Среднескладской остаток за период (среднее арифметическое остатков на начало дня)")
     
     st.markdown("---")
     
@@ -280,61 +284,92 @@ def display_simulation_results(results):
                     fig_hist_lifo.add_vline(x=np.mean(lifo_rates), line_dash="solid", line_color="#E74C3C", annotation_text=f"Ср: {np.mean(lifo_rates):.2f}%", annotation_position="bottom")
                     st.plotly_chart(fig_hist_lifo, use_container_width=True)
     else:
-        st.subheader("📊 Анализ распределений (Помидоры)")
-        col1, col2 = st.columns(2)
-        with col1:
-            fig_hist_demand = px.histogram(
-                df, x='demand', nbins=15,
-                title=f"Распределение спроса ({distribution})",
-                labels={'demand': 'Спрос (кг)', 'count': 'Частота'},
-                opacity=0.8, color_discrete_sequence=['#A23B72'],
+        st.subheader("📊 Анализ распределений (Постепенная порча)")
+        
+        # График спроса
+        fig_hist_demand = px.histogram(
+            df, x='demand', nbins=15,
+            title=f"Распределение спроса ({distribution})",
+            labels={'demand': 'Спрос (кг)', 'count': 'Частота'},
+            opacity=0.8, color_discrete_sequence=['#A23B72'],
+            template='plotly_white'
+        )
+        fig_hist_demand.add_vline(x=df['demand'].mean(), line_dash="dash", line_color="red", annotation_text=f"Среднее: {df['demand'].mean():.2f}", annotation_position="top")
+        st.plotly_chart(fig_hist_demand, use_container_width=True)
+        
+        st.markdown("---")
+        st.subheader("📊 Динамика порчи по дням")
+        
+        # График порчи
+        spoilage_df = pd.DataFrame()
+        spoilage_df['День'] = df['day']
+        spoilage_df['Порча (кг)'] = df['spoilage']
+        spoilage_df = spoilage_df.dropna()
+        
+        if not spoilage_df.empty and len(spoilage_df) > 0:
+            fig_spoilage = go.Figure()
+            fig_spoilage.add_trace(go.Bar(
+                x=spoilage_df['День'],
+                y=spoilage_df['Порча (кг)'],
+                name='Порча',
+                marker_color='#E74C3C',
+                opacity=0.7
+            ))
+            fig_spoilage.update_layout(
+                title=f"Ежедневная порча ({params.get('spoilage_type', 'linear')} тип)",
+                xaxis_title="День",
+                yaxis_title="Порча (кг)",
                 template='plotly_white'
             )
-            fig_hist_demand.add_vline(x=df['demand'].mean(), line_dash="dash", line_color="red", annotation_text=f"Среднее: {df['demand'].mean():.2f}", annotation_position="top")
-            st.plotly_chart(fig_hist_demand, use_container_width=True)
+            st.plotly_chart(fig_spoilage, use_container_width=True)
+        
         st.markdown("---")
-        st.subheader("📊 Распределение процентов порчи по неделям")
-        spoilage_stats = data.get('spoilage_stats', {})
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            week1_rates = spoilage_stats.get('week1_rates', spoilage_stats.get('week10_rates', []))
-            if week1_rates:
-                fig1 = px.histogram(
-                    x=week1_rates, nbins=15,
-                    title="1-я неделя (базовый 10%)",
-                    labels={'x': 'Процент порчи (%)', 'count': 'Частота'},
-                    opacity=0.8, color_discrete_sequence=['#3498DB'],
-                    template='plotly_white'
-                )
-                fig1.add_vline(x=10.0, line_dash="dash", line_color="red", annotation_text="10%")
-                fig1.add_vline(x=spoilage_stats.get('week1_mean', np.mean(week1_rates)), line_dash="solid", line_color="#3498DB", annotation_text=f"Ср: {spoilage_stats.get('week1_mean', np.mean(week1_rates)):.1f}%")
-                st.plotly_chart(fig1, use_container_width=True)
-        with col2:
-            week2_rates = spoilage_stats.get('week2_rates', spoilage_stats.get('week50_rates', []))
-            if week2_rates:
-                fig2 = px.histogram(
-                    x=week2_rates, nbins=15,
-                    title="2-я неделя (базовый 50%)",
-                    labels={'x': 'Процент порчи (%)', 'count': 'Частота'},
-                    opacity=0.8, color_discrete_sequence=['#F39C12'],
-                    template='plotly_white'
-                )
-                fig2.add_vline(x=50.0, line_dash="dash", line_color="red", annotation_text="50%")
-                fig2.add_vline(x=spoilage_stats.get('week2_mean', np.mean(week2_rates)), line_dash="solid", line_color="#F39C12", annotation_text=f"Ср: {spoilage_stats.get('week2_mean', np.mean(week2_rates)):.1f}%")
-                st.plotly_chart(fig2, use_container_width=True)
-        with col3:
-            week3_rates = spoilage_stats.get('week3_rates', [])
-            if week3_rates:
-                fig3 = px.histogram(
-                    x=week3_rates, nbins=15,
-                    title="3-я неделя (базовый 100%)",
-                    labels={'x': 'Процент порчи (%)', 'count': 'Частота'},
-                    opacity=0.8, color_discrete_sequence=['#E74C3C'],
-                    template='plotly_white'
-                )
-                fig3.add_vline(x=100.0, line_dash="dash", line_color="red", annotation_text="100%")
-                fig3.add_vline(x=spoilage_stats.get('week3_mean', np.mean(week3_rates)), line_dash="solid", line_color="#E74C3C", annotation_text=f"Ср: {spoilage_stats.get('week3_mean', np.mean(week3_rates)):.1f}%")
-                st.plotly_chart(fig3, use_container_width=True)
+        st.subheader("📊 Остатки по возрастным группам")
+        
+        # График остатков по возрастам
+        age_df = pd.DataFrame()
+        age_df['День'] = df['day']
+        age_df['0-7 дней'] = df['stock_week1']
+        age_df['8-14 дней'] = df['stock_week2']
+        age_df['15+ дней'] = df['stock_week3']
+        age_df = age_df.dropna()
+        
+        if not age_df.empty and len(age_df) > 0:
+            fig_age = go.Figure()
+            fig_age.add_trace(go.Scatter(
+                x=age_df['День'],
+                y=age_df['0-7 дней'],
+                mode='lines',
+                name='0-7 дней',
+                line=dict(color='#2ECC71', width=2),
+                fill='tozeroy',
+                opacity=0.3
+            ))
+            fig_age.add_trace(go.Scatter(
+                x=age_df['День'],
+                y=age_df['8-14 дней'],
+                mode='lines',
+                name='8-14 дней',
+                line=dict(color='#F39C12', width=2),
+                fill='tozeroy',
+                opacity=0.3
+            ))
+            fig_age.add_trace(go.Scatter(
+                x=age_df['День'],
+                y=age_df['15+ дней'],
+                mode='lines',
+                name='15+ дней',
+                line=dict(color='#E74C3C', width=2),
+                fill='tozeroy',
+                opacity=0.3
+            ))
+            fig_age.update_layout(
+                title="Структура остатков по возрасту",
+                xaxis_title="День",
+                yaxis_title="Остаток (кг)",
+                template='plotly_white'
+            )
+            st.plotly_chart(fig_age, use_container_width=True)
     
     st.markdown("---")
     
@@ -348,15 +383,17 @@ def display_simulation_results(results):
             st.write(f"**Минимум:** {stats.get('min', 0):.2f}")
             st.write(f"**Максимум:** {stats.get('max', 0):.2f}")
     with col2:
-        st.subheader("🗑️ Статистика порчи (из API)")
-        if product_category == "strict" and 'spoilage_stats' in data:
-            s = data['spoilage_stats']
-            st.write(f"**FIFO среднее:** {s.get('fifo_mean', 0):.2f}%")
-            st.write(f"**LIFO среднее:** {s.get('lifo_mean', 0):.2f}%")
-        elif 'spoilage_stats' in data:
-            s = data['spoilage_stats']
-            st.write(f"**1-я неделя (10%):** {s.get('week1_mean', s.get('week10_mean', 0)):.2f}%")
-            st.write(f"**2-я неделя (50%):** {s.get('week2_mean', s.get('week50_mean', 0)):.2f}%")
+        st.subheader("🗑️ Статистика порчи")
+        if product_category == "strict":
+            if 'spoilage_stats' in data:
+                s = data['spoilage_stats']
+                st.write(f"**FIFO среднее:** {s.get('fifo_mean', 0):.2f}%")
+                st.write(f"**LIFO среднее:** {s.get('lifo_mean', 0):.2f}%")
+        else:
+            total_spoilage = data.get('total_spoilage_kg', 0)
+            avg_daily_spoilage = total_spoilage / days if days > 0 else 0
+            st.write(f"**Всего потеряно:** {total_spoilage:.2f} кг")
+            st.write(f"**В среднем в день:** {avg_daily_spoilage:.2f} кг")
     
     # Таблица с историей
     with st.expander("📋 Детальная история"):
@@ -398,9 +435,6 @@ def display_simulation_results(results):
                 'stock_week3': 'Остаток 15+ дней (кг)'
             }
             df_display['Порча % от остатка'] = df_display.apply(lambda row: round((row['spoilage'] / row['start_stock'] * 100), 2) if row['start_stock'] > 0 else 0, axis=1)
-            if 'spoilage_stats' in data:
-                s = data['spoilage_stats']
-                st.caption(f"📊 Средний процент порчи: 1-я неделя: {s.get('week1_mean', s.get('week10_mean', 0)):.1f}% | 2-я неделя: {s.get('week2_mean', s.get('week50_mean', 0)):.1f}% | 3-я неделя: {s.get('week3_mean', 0):.1f}%")
         
         existing_columns = {k: v for k, v in column_names.items() if k in df_display.columns}
         df_display = df_display.fillna(0)
@@ -434,10 +468,12 @@ with st.sidebar:
     product_category = selected_product['category']
     purchase_price = selected_product['purchase_price']
     sale_price = selected_product['sale_price']
-    shelf_life_days = selected_product['shelf_life_days']
+    shelf_life_days_db = selected_product['shelf_life_days']
+    spoilage_type_db = selected_product.get('spoilage_type', 'linear')
 
     st.info(f"💰 Цена закупки: {purchase_price:.2f} руб | Цена продажи: {sale_price:.2f} руб")
 
+    # Параметры спроса
     distribution = st.selectbox(
         "Закон распределения спроса",
         options=["uniform", "normal"],
@@ -449,6 +485,49 @@ with st.sidebar:
     st.markdown("---")
     st.subheader("📦 Запасы")
     min_stock = st.number_input("Минимальный запас", min_value=0.0, value=300.0, step=50.0)
+
+    st.markdown("---")
+    st.subheader("🕐 Параметры порчи")
+    
+    # Выбор типа порчи (только для gradual продуктов)
+    if product_category == "gradual":
+        spoilage_type = st.selectbox(
+            "Тип порчи",
+            options=["linear", "exponential"],
+            index=0 if spoilage_type_db == "linear" else 1,
+            format_func=lambda x: "📈 Линейная (равномерное старение)" if x == "linear" else "📊 Экспоненциальная (ускоренное старение)"
+        )
+        
+        shelf_life_days = st.number_input(
+            "Срок годности (дней)", 
+            min_value=1, 
+            value=shelf_life_days_db or 30, 
+            step=5,
+            help="Через сколько дней товар полностью испортится"
+        )
+        
+        if spoilage_type == "exponential":
+            exponential_k = st.slider(
+                "Коэффициент крутизны экспоненты", 
+                min_value=0.05, 
+                max_value=0.5, 
+                value=0.15, 
+                step=0.01,
+                help="Чем больше значение, тем быстрее порча в конце срока"
+            )
+        else:
+            exponential_k = 0.15
+    else:
+        # Для молока (строгая порча)
+        spoilage_type = "strict"
+        shelf_life_days = st.number_input(
+            "Срок годности (дней)", 
+            min_value=1, 
+            value=shelf_life_days_db or 10, 
+            step=1,
+            help="До этого дня товар свежий, после - портится мгновенно"
+        )
+        exponential_k = 0.15
 
     st.markdown("---")
     st.subheader("📅 Коэффициенты спроса по дням недели")
@@ -468,12 +547,16 @@ with st.sidebar:
 
     weekday_factors = [mon, tue, wed, thu, fri, sat, sun]
 
+    # Только для молока
     if product_category == "strict":
         st.markdown("---")
         st.subheader("👥 Распределение покупателей")
         fifo_percent = st.number_input("FIFO %", min_value=0, max_value=100, value=75, step=5, help="Процент покупателей, берущих самое старое")
         lifo_percent = 100 - fifo_percent
         st.metric("LIFO %", f"{lifo_percent}%")
+    else:
+        fifo_percent = 100
+        lifo_percent = 0
 
     st.markdown("---")
     st.subheader("🚚 Поставки")
@@ -526,25 +609,21 @@ if run_button:
             "distribution": distribution,
             "product_type": "milk" if product_category == "strict" else "tomatoes",
             "start_date": datetime(2026, 2, 1).isoformat(),
-            "product_name": selected_product_name
+            "product_name": selected_product_name,
+            "spoilage_type": spoilage_type,
+            "shelf_life_days": int(shelf_life_days),
+            "exponential_k": exponential_k if spoilage_type == "exponential" else None,
+            "fifo_percent": float(fifo_percent) if product_category == "strict" else None,
+            "lifo_percent": float(lifo_percent) if product_category == "strict" else None,
         }
 
+        # Параметры поставок
         if product_category == "strict":
-            params["fifo_percent"] = float(fifo_percent)
-            params["lifo_percent"] = float(100 - fifo_percent)
-            params["shelf_life_days"] = int(shelf_life_days) if shelf_life_days else 10
-            params["utilization_price"] = 5.0
-            params["sigma_buyer"] = 1.51
             params["milk_delivery_frequency"] = delivery_frequency if delivery_schedule_type == "frequency" else 0
             params["milk_delivery_days"] = delivery_days if delivery_days else []
+            params["utilization_price"] = 5.0
+            params["sigma_buyer"] = 1.51
         else:
-            spoilage_rates = db.get_spoilage_rates(product_id)
-            week_sigmas = {}
-            for _, row in spoilage_rates.iterrows():
-                week = int(row['week_number'])
-                week_sigmas[week] = 0.96 if week == 1 else 1.59
-            params["sigma_10"] = week_sigmas.get(1, 0.96)
-            params["sigma_50"] = week_sigmas.get(2, 1.59)
             params["tomatoes_delivery_frequency"] = delivery_frequency if delivery_schedule_type == "frequency" else 0
             params["tomatoes_delivery_days"] = delivery_days if delivery_days else []
         
