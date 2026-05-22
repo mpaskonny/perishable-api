@@ -9,6 +9,7 @@ from core.simple_spoilage import LinearSpoilage, ExponentialSpoilage
 from core.product import Product
 from database.db_manager import DatabaseManager
 from datetime import datetime
+from core.sigma_loader import get_sigma_loader
 
 
 # ========== КОНСТАНТЫ ==========
@@ -77,7 +78,10 @@ def create_product(params: SimulationParams) -> Product:
         customer_strategy = FixedCustomerStrategy()
     else:  # normal
         # Нормальный спрос: средний = базовый, sigma = 15% от среднего
-        demand_strategy = NormalDemand(base_demand, base_demand * 0.15)
+        sigma_loader = get_sigma_loader()
+        empirical_sigma = sigma_loader.get_sigma(base_demand)
+
+        demand_strategy = NormalDemand(base_demand, empirical_sigma)
         if category_id == 1:  # strict (молоко)
             sigma_buyer = params.sigma_buyer if params.sigma_buyer is not None else MILK_CUSTOMER_SIGMA
             customer_strategy = NormalCustomerStrategy(sigma_buyer)

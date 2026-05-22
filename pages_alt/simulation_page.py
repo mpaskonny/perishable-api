@@ -55,7 +55,7 @@ def show():
     with col_left:
         st.subheader("⚙️ Параметры симуляции")
         days = st.slider("📅 Количество дней симуляции", 10, 365, 30, key="sim_days")
-        min_stock = st.number_input("📦 Минимальный запас", min_value=0.0, value=300.0, step=50.0, key="sim_min_stock")
+        min_stock = st.number_input("📦 Целевой уровень запаса", min_value=0.0, value=300.0, step=50.0, key="sim_min_stock")
     
     # ПРАВЫЙ КОНТЕЙНЕР: зависит от типа продукта
     with col_right:
