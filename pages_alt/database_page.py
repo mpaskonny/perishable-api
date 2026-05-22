@@ -9,128 +9,119 @@ def show():
     if 'db_manager' not in st.session_state:
         st.session_state.db_manager = DatabaseManager()
     db = st.session_state.db_manager
-
+    
+    # Инициализация состояния для модальных окон
+    if 'show_add_modal' not in st.session_state:
+        st.session_state.show_add_modal = False
+    if 'show_edit_modal' not in st.session_state:
+        st.session_state.show_edit_modal = False
+    if 'show_delete_modal' not in st.session_state:
+        st.session_state.show_delete_modal = False
+    if 'show_clear_modal' not in st.session_state:
+        st.session_state.show_clear_modal = False
+    if 'editing_product' not in st.session_state:
+        st.session_state.editing_product = None
+    if 'delete_product_name' not in st.session_state:
+        st.session_state.delete_product_name = None
+    if 'delete_product_id' not in st.session_state:
+        st.session_state.delete_product_id = None
+    
+    st.title("🗄️ Управление базой данных")
+    st.markdown("---")
+    
     tab1, tab2 = st.tabs(["📦 Товары", "📊 История экспериментов"])
     
     # ========== ТОВАРЫ ==========
     with tab1:
         st.subheader("📋 Список товаров")
+        
+        # Таблица товаров
         products_df = db.get_all_products()
         
         if not products_df.empty:
-            # Переименовываем колонки на русский язык
-            display_df = products_df.rename(columns={
+            # Подготавливаем данные для отображения
+            display_df = products_df.copy()
+            display_df = display_df.rename(columns={
                 'id_product': 'ID',
                 'name': 'Название',
                 'category': 'Категория',
-                'purchase_price': 'Цена закупки (руб)',
-                'sale_price': 'Цена продажи (руб)',
-                'shelf_life_days': 'Срок годности (дн)',
-                'base_demand': 'Базовый спрос (ед/день)'
+                'purchase_price': 'Цена закупки',
+                'sale_price': 'Цена продажи',
+                'shelf_life_days': 'Срок годности',
+                'base_demand': 'Базовый спрос'
             })
+            
             # Переводим категории
             display_df['Категория'] = display_df['Категория'].map({
-                'strict': '🥛 Строгий срок (молоко)',
-                'gradual': '🍅 Постепенная порча (овощи/фрукты)'
+                'strict': '🥛 Строгий срок',
+                'gradual': '🍅 Постепенная порча'
             })
-            st.dataframe(display_df, use_container_width=True)
             
-            # Удаление товара
+            # Форматируем значения
+            display_df['Цена закупки'] = display_df['Цена закупки'].apply(lambda x: f"{x:.2f} руб")
+            display_df['Цена продажи'] = display_df['Цена продажи'].apply(lambda x: f"{x:.2f} руб")
+            display_df['Срок годности'] = display_df['Срок годности'].apply(lambda x: f"{x} дн")
+            display_df['Базовый спрос'] = display_df['Базовый спрос'].apply(lambda x: f"{x:.0f} ед/день")
+            
+            # Отображаем таблицу
+            display_cols = ['Название', 'Категория', 'Цена закупки', 'Цена продажи', 'Срок годности', 'Базовый спрос']
+            st.dataframe(display_df[display_cols], use_container_width=True)
+            
             st.markdown("---")
-            st.subheader("🗑️ Удалить товар")
-            col1, col2 = st.columns([3, 1])
+            
+            # Панель управления товарами
+            col1, col2, col3, col4 = st.columns([3, 1, 1, 1])
+            
             with col1:
-                product_to_delete = st.selectbox("Выберите товар для удаления", products_df['name'].tolist())
+                selected_product_name = st.selectbox(
+                    "Выберите товар",
+                    options=[""] + products_df['name'].tolist(),
+                    key="manage_product",
+                    help="Выберите товар для редактирования или удаления"
+                )
+            
             with col2:
-                if st.button("🗑️ Удалить", type="secondary"):
-                    product_id = db.get_product_id_by_name(product_to_delete)
-                    db.delete_product(product_id)
-                    st.rerun()
-        
-        # Добавление товара
-        st.markdown("---")
-        st.subheader("➕ Добавить новый товар")
-        
-        with st.form("add_product_form"):
-            name = st.text_input("Название товара", placeholder="Например: Помидоры, Молоко, Бананы...")
+                if st.button("➕ Добавить", type="primary", use_container_width=True):
+                    st.session_state.show_add_modal = True
             
-            # Категория на русском языке
-            cat_ru = st.selectbox(
-                "Категория", 
-                options=["strict", "gradual"],
-                format_func=lambda x: "🥛 Строгий срок (молоко, йогурт...)" if x == "strict" else "🍅 Постепенная порча (овощи, фрукты...)"
-            )
-            cat_id = 1 if cat_ru == "strict" else 2
+            with col3:
+                if selected_product_name and selected_product_name != "":
+                    if st.button("✏️ Редактировать", use_container_width=True):
+                        selected_product = products_df[products_df['name'] == selected_product_name].iloc[0]
+                        st.session_state.editing_product = {
+                            'id_product': selected_product['id_product'],
+                            'name': selected_product['name'],
+                            'category': selected_product['category'],
+                            'purchase_price': selected_product['purchase_price'],
+                            'sale_price': selected_product['sale_price'],
+                            'shelf_life_days': selected_product['shelf_life_days'],
+                            'base_demand': selected_product['base_demand']
+                        }
+                        st.session_state.show_edit_modal = True
             
-            col1, col2 = st.columns(2)
-            with col1:
-                purchase = st.number_input(
-                    "💰 Цена закупки (руб)", 
-                    min_value=0.0, 
-                    value=None,
-                    step=10.0,
-                    placeholder="Например: 220"
-                )
+            with col4:
+                if selected_product_name and selected_product_name != "":
+                    if st.button("🗑️ Удалить", type="secondary", use_container_width=True):
+                        st.session_state.delete_product_name = selected_product_name
+                        st.session_state.delete_product_id = products_df[products_df['name'] == selected_product_name].iloc[0]['id_product']
+                        st.session_state.show_delete_modal = True
+        else:
+            st.info("📭 Нет товаров в базе данных. Нажмите «➕ Добавить», чтобы добавить первый товар.")
+            
+            # Кнопка добавления, когда нет товаров
+            col1, col2, col3 = st.columns([3, 1, 1])
             with col2:
-                sale = st.number_input(
-                    "💰 Цена продажи (руб)", 
-                    min_value=0.0, 
-                    value=None,
-                    step=10.0,
-                    placeholder="Например: 295"
-                )
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                shelf = st.number_input(
-                    "📅 Срок годности (дней)", 
-                    min_value=1, 
-                    value=None,
-                    step=1,
-                    placeholder="Например: 30"
-                )
-            with col2:
-                base_demand = st.number_input(
-                    "📊 Базовый дневной спрос (ед/день)", 
-                    min_value=1.0, 
-                    value=None,
-                    step=10.0,
-                    placeholder="Например: 175"
-                )
-            
-            # Валидация перед сохранением
-            submitted = st.form_submit_button("💾 Сохранить товар", use_container_width=True)
-            
-            if submitted:
-                errors = []
-                if not name:
-                    errors.append("Введите название товара")
-                if purchase is None or purchase <= 0:
-                    errors.append("Введите корректную цену закупки (>0)")
-                if sale is None or sale <= 0:
-                    errors.append("Введите корректную цену продажи (>0)")
-                if shelf is None or shelf <= 0:
-                    errors.append("Введите корректный срок годности (>0)")
-                if base_demand is None or base_demand <= 0:
-                    errors.append("Введите корректный базовый спрос (>0)")
-                
-                if errors:
-                    for error in errors:
-                        st.error(error)
-                else:
-                    db.add_product(name, cat_id, purchase, sale, shelf, base_demand)
-                    st.success(f"✅ Товар '{name}' добавлен!")
-                    st.rerun()
+                if st.button("➕ Добавить первый товар", type="primary", use_container_width=True):
+                    st.session_state.show_add_modal = True
     
     # ========== ИСТОРИЯ ЭКСПЕРИМЕНТОВ ==========
     with tab2:
         st.subheader("📊 Сохранённые симуляции")
         
-        if st.button("🗑️ Очистить всё", type="secondary"):
-            with sqlite3.connect("database/perishable.db") as conn:
-                conn.execute("DELETE FROM experiments")
-                conn.execute("DELETE FROM sqlite_sequence WHERE name='experiments'")
-            st.rerun()
+        col1, col2 = st.columns([4, 1])
+        with col2:
+            if st.button("🗑️ Очистить всё", type="secondary", use_container_width=True):
+                st.session_state.show_clear_modal = True
         
         exp_df = db.get_all_experiments()
         if not exp_df.empty:
@@ -186,7 +177,7 @@ def show():
             # Сортируем по ID в обратном порядке
             exp_df_display = exp_df_display.sort_values('ID', ascending=False)
             
-            st.dataframe(exp_df_display, use_container_width=True)
+            st.dataframe(exp_df_display, use_container_width=True, height=400)
             st.caption(f"📊 Всего экспериментов: {len(exp_df_display)}")
             
             # Экспорт
@@ -199,4 +190,231 @@ def show():
                 use_container_width=True
             )
         else:
-            st.info("📭 Нет сохранённых экспериментов")
+            st.info("📭 Нет сохранённых экспериментов. После симуляции нажмите «Сохранить результат».")
+
+
+# ========== МОДАЛЬНЫЕ ОКНА (ОПРЕДЕЛЯЮТСЯ ВНЕ ФУНКЦИИ SHOW) ==========
+
+# Модальное окно добавления товара
+@st.dialog("➕ Добавление нового товара", width="large")
+def add_product_modal():
+    db = DatabaseManager()
+    
+    with st.form("add_product_form"):
+        name = st.text_input("Название товара", placeholder="Например: Помидоры, Молоко, Бананы...")
+        
+        cat_ru = st.selectbox(
+            "Категория", 
+            options=["strict", "gradual"],
+            format_func=lambda x: "🥛 Строгий срок (молоко, йогурт...)" if x == "strict" else "🍅 Постепенная порча (овощи, фрукты...)"
+        )
+        cat_id = 1 if cat_ru == "strict" else 2
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            purchase = st.number_input(
+                "💰 Цена закупки (руб)", 
+                min_value=0.0, 
+                value=None,
+                step=10.0,
+                placeholder="Например: 220"
+            )
+        with col2:
+            sale = st.number_input(
+                "💰 Цена продажи (руб)", 
+                min_value=0.0, 
+                value=None,
+                step=10.0,
+                placeholder="Например: 295"
+            )
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            shelf = st.number_input(
+                "📅 Срок годности (дней)", 
+                min_value=1, 
+                value=None,
+                step=1,
+                placeholder="Например: 30"
+            )
+        with col2:
+            base_demand = st.number_input(
+                "📊 Базовый дневной спрос (ед/день)", 
+                min_value=1.0, 
+                value=None,
+                step=10.0,
+                placeholder="Например: 175"
+            )
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            submitted = st.form_submit_button("💾 Добавить", type="primary", use_container_width=True)
+        with col2:
+            if st.form_submit_button("❌ Отмена", use_container_width=True):
+                st.session_state.show_add_modal = False
+                st.rerun()
+        
+        if submitted:
+            errors = []
+            if not name:
+                errors.append("Введите название товара")
+            if purchase is None or purchase <= 0:
+                errors.append("Введите корректную цену закупки (>0)")
+            if sale is None or sale <= 0:
+                errors.append("Введите корректную цену продажи (>0)")
+            if shelf is None or shelf <= 0:
+                errors.append("Введите корректный срок годности (>0)")
+            if base_demand is None or base_demand <= 0:
+                errors.append("Введите корректный базовый спрос (>0)")
+            
+            if errors:
+                for error in errors:
+                    st.error(error)
+            else:
+                db.add_product(name, cat_id, purchase, sale, shelf, base_demand)
+                st.success(f"✅ Товар '{name}' добавлен!")
+                st.session_state.show_add_modal = False
+                st.rerun()
+
+
+# Модальное окно редактирования товара
+@st.dialog("✏️ Редактирование товара", width="large")
+def edit_product_modal():
+    db = DatabaseManager()
+    product = st.session_state.editing_product
+    
+    if product is None:
+        st.error("Ошибка: товар не выбран")
+        return
+    
+    with st.form("edit_product_form"):
+        name = st.text_input("Название товара", value=product['name'])
+        
+        current_cat = "strict" if product['category'] == "strict" else "gradual"
+        cat_ru = st.selectbox(
+            "Категория", 
+            options=["strict", "gradual"],
+            format_func=lambda x: "🥛 Строгий срок (молоко, йогурт...)" if x == "strict" else "🍅 Постепенная порча (овощи, фрукты...)",
+            index=0 if current_cat == "strict" else 1
+        )
+        cat_id = 1 if cat_ru == "strict" else 2
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            purchase = st.number_input(
+                "💰 Цена закупки (руб)", 
+                min_value=0.0, 
+                value=product['purchase_price'],
+                step=10.0
+            )
+        with col2:
+            sale = st.number_input(
+                "💰 Цена продажи (руб)", 
+                min_value=0.0, 
+                value=product['sale_price'],
+                step=10.0
+            )
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            shelf = st.number_input(
+                "📅 Срок годности (дней)", 
+                min_value=1, 
+                value=int(product['shelf_life_days']),
+                step=1
+            )
+        with col2:
+            base_demand = st.number_input(
+                "📊 Базовый дневной спрос (ед/день)", 
+                min_value=1.0, 
+                value=product['base_demand'],
+                step=10.0
+            )
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            submitted = st.form_submit_button("💾 Сохранить изменения", type="primary", use_container_width=True)
+        with col2:
+            if st.form_submit_button("❌ Отмена", use_container_width=True):
+                st.session_state.show_edit_modal = False
+                st.session_state.editing_product = None
+                st.rerun()
+        
+        if submitted:
+            db.update_product(
+                product['id_product'],
+                name=name,
+                id_category=cat_id,
+                purchase_price=purchase,
+                sale_price=sale,
+                shelf_life_days=shelf,
+                base_demand=base_demand
+            )
+            st.success(f"✅ Товар '{name}' обновлён!")
+            st.session_state.show_edit_modal = False
+            st.session_state.editing_product = None
+            st.rerun()
+
+
+# Модальное окно подтверждения удаления
+@st.dialog("🗑️ Подтверждение удаления", width="small")
+def delete_product_modal():
+    db = DatabaseManager()
+    product_name = st.session_state.delete_product_name
+    product_id = st.session_state.delete_product_id
+    
+    st.warning(f"⚠️ Вы действительно хотите удалить товар **«{product_name}»**?")
+    st.caption("Это действие невозможно отменить. Все связанные эксперименты также будут удалены.")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("✅ Да, удалить", type="secondary", use_container_width=True):
+            db.delete_product(product_id)
+            st.success(f"✅ Товар '{product_name}' удалён!")
+            st.session_state.show_delete_modal = False
+            st.session_state.delete_product_name = None
+            st.session_state.delete_product_id = None
+            st.rerun()
+    with col2:
+        if st.button("❌ Отмена", type="primary", use_container_width=True):
+            st.session_state.show_delete_modal = False
+            st.session_state.delete_product_name = None
+            st.session_state.delete_product_id = None
+            st.rerun()
+
+
+# Модальное окно подтверждения очистки экспериментов
+@st.dialog("🗑️ Подтверждение очистки", width="small")
+def clear_experiments_modal():
+    st.warning("⚠️ Вы действительно хотите удалить **ВСЕ** сохранённые эксперименты?")
+    st.caption("Это действие невозможно отменить.")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("✅ Да, очистить всё", type="secondary", use_container_width=True):
+            with sqlite3.connect("database/perishable.db") as conn:
+                conn.execute("DELETE FROM experiments")
+                conn.execute("DELETE FROM sqlite_sequence WHERE name='experiments'")
+            st.success("✅ Все эксперименты удалены!")
+            st.session_state.show_clear_modal = False
+            st.rerun()
+    with col2:
+        if st.button("❌ Отмена", type="primary", use_container_width=True):
+            st.session_state.show_clear_modal = False
+            st.rerun()
+
+
+# ========== ВЫЗОВ МОДАЛЬНЫХ ОКОН (В КОНЦЕ ФУНКЦИИ SHOW) ==========
+# Проверяем флаги и вызываем соответствующие модальные окна
+
+if st.session_state.get('show_add_modal', False):
+    add_product_modal()
+
+if st.session_state.get('show_edit_modal', False) and st.session_state.get('editing_product'):
+    edit_product_modal()
+
+if st.session_state.get('show_delete_modal', False):
+    delete_product_modal()
+
+if st.session_state.get('show_clear_modal', False):
+    clear_experiments_modal()
