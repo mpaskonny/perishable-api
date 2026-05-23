@@ -22,10 +22,11 @@ class SimulationParams(BaseModel):
     weekday_factors: Optional[List[float]] = [0.8, 0.6, 0.9, 1.0, 1.3, 1.5, 1.1]
     fixed_demand: Optional[List[float]] = None
     
-    # Параметры порчи (НОВЫЕ!)
-    spoilage_type: Optional[str] = "linear"  # "strict", "linear" или "exponential"
-    shelf_life_days: int = 30  # Срок годности в днях
-    exponential_k: Optional[float] = 0.15  # Коэффициент крутизны для экспоненциальной порчи
+    # Параметры порчи
+    spoilage_type: Optional[str] = "linear"  # "linear", "exponential", "logistic"
+    shelf_life_days: int = 30
+    exponential_k: Optional[float] = 0.15   # для экспоненциальной порчи
+    logistic_k: Optional[float] = 15.0      # для логистической порчи
     
     # Параметры поставок (общие)
     delivery_type: Optional[str] = "unit"  # "unit" или "box"

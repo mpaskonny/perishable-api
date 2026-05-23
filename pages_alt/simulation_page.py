@@ -67,31 +67,51 @@ def show():
             st.caption(f"📊 LIFO: {lifo_percent}%")
             spoilage_type = "strict"
             exponential_k = 0.15
+            logistic_k = 15.0
         else:
-            # Для помидоров: параметры порчи
+            # Для помидоров: параметры порчи (3 варианта)
             st.subheader("🕐 Параметры порчи")
+            
             spoilage_type = st.selectbox(
                 "Тип порчи",
-                options=["linear", "exponential"],
-                format_func=lambda x: "📈 Линейная (равномерное старение)" if x == "linear" else "📊 Экспоненциальная (ускоренное старение)",
+                options=["linear", "exponential", "logistic"],
+                format_func=lambda x: {
+                    "linear": "📈 Линейная (равномерное старение)",
+                    "exponential": "📉 Экспоненциальная (быстрое старение в начале)",
+                    "logistic": "📊 Логистическая (S-образная, резкое старение в конце)"
+                }[x],
                 key="sim_spoilage_type"
             )
             
             if spoilage_type == "exponential":
                 exponential_k = st.slider(
-                    "Коэффициент крутизны", 
+                    "Коэффициент крутизны (экспоненциальная)", 
+                    min_value=0.05, 
+                    max_value=0.5, 
+                    value=0.15, 
+                    step=0.01,
+                    help="Чем больше значение, тем быстрее порча в начале срока",
+                    key="sim_exp_k"
+                )
+                logistic_k = 15.0
+            elif spoilage_type == "logistic":
+                logistic_k = st.slider(
+                    "Коэффициент крутизны (логистическая)", 
                     min_value=5.0, 
-                    max_value=50.0, 
+                    max_value=30.0, 
                     value=15.0, 
                     step=1.0,
                     help="Чем больше значение, тем резче переход от свежего к испорченному",
-                    key="sim_k"
+                    key="sim_log_k"
                 )
-            else:
-                exponential_k = 15.0
+                exponential_k = 0.15
+            else:  # linear
+                exponential_k = 0.15
+                logistic_k = 15.0
+            
             fifo_percent = 100
             lifo_percent = 0
-    
+        
     # ========== КНОПКА ЗАПУСКА ==========
     st.markdown("---")
     
@@ -105,11 +125,12 @@ def show():
                 "min_stock": float(min_stock),
                 "purchase_price": float(selected_product['purchase_price']),
                 "sale_price": float(selected_product['sale_price']),
-                "shelf_life_days": int(selected_product['shelf_life_days']),
                 "distribution": settings.get('distribution', 'uniform'),
                 "weekday_factors": settings.get('weekday_factors', [0.8, 0.6, 0.9, 1.0, 1.3, 1.5, 1.1]),
                 "spoilage_type": spoilage_type,
+                "shelf_life_days": int(selected_product['shelf_life_days']),
                 "exponential_k": exponential_k,
+                "logistic_k": logistic_k,
                 "delivery_type": settings.get('delivery_type', 'unit'),
                 "box_size": settings.get('box_size', 0),
                 "product_type": "milk" if product_category == "strict" else "tomatoes",
