@@ -29,7 +29,7 @@ TOMATOES_NORMAL_SIGMA = 14.91
 MILK_CUSTOMER_SIGMA = 1.51
 
 # Параметры экспоненциальной порчи по умолчанию
-DEFAULT_EXPONENTIAL_K = 0.15
+DEFAULT_EXPONENTIAL_K = 15.0
 
 # Коэффициенты дней недели по умолчанию
 DEFAULT_WEEKDAY_FACTORS = [0.8, 0.6, 0.9, 1.0, 1.3, 1.5, 1.1]

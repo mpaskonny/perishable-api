@@ -80,15 +80,15 @@ def show():
             if spoilage_type == "exponential":
                 exponential_k = st.slider(
                     "Коэффициент крутизны", 
-                    min_value=0.05, 
-                    max_value=0.5, 
-                    value=0.15, 
-                    step=0.01,
-                    help="Чем больше значение, тем быстрее порча в конце срока",
+                    min_value=5.0, 
+                    max_value=50.0, 
+                    value=15.0, 
+                    step=1.0,
+                    help="Чем больше значение, тем резче переход от свежего к испорченному",
                     key="sim_k"
                 )
             else:
-                exponential_k = 0.15
+                exponential_k = 15.0
             fifo_percent = 100
             lifo_percent = 0
     
