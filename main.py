@@ -10,7 +10,8 @@ from core.product import Product
 from database.db_manager import DatabaseManager
 from datetime import datetime
 from core.sigma_loader import get_sigma_loader
-
+from core.data_loader import DemandDataLoader
+from core.demand import RealDemand
 
 # ========== КОНСТАНТЫ ==========
 # Молоко - параметры спроса
@@ -69,19 +70,31 @@ def create_product(params: SimulationParams) -> Product:
     base_demand = product_data.get('base_demand', 100)
     
     # ========== 1. СТРАТЕГИЯ СПРОСА (из настроек симуляции) ==========
-    if params.fixed_demand:
+    if params.use_real_demand and params.real_demand_file:
+        # Реальный спрос из Excel
+        try:
+            demand_data = DemandDataLoader.load_from_excel(params.real_demand_file)
+            demand_strategy = RealDemand(demand_data, base_demand)
+            customer_strategy = FixedCustomerStrategy()
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Ошибка загрузки Excel: {str(e)}")
+
+    elif params.fixed_demand:
         demand_strategy = FixedDemand(params.fixed_demand)
         customer_strategy = FixedCustomerStrategy()
+        
     elif params.distribution == "uniform":
         # Равномерный спрос: от 0.5x до 1.5x от базового
         demand_strategy = UniformDemand(base_demand * 0.5, base_demand * 1.5)
         customer_strategy = FixedCustomerStrategy()
+        
     else:  # normal
-        # Нормальный спрос: средний = базовый, sigma = 15% от среднего
+        # Нормальный спрос: средний = базовый, сигма из Excel
         sigma_loader = get_sigma_loader()
         empirical_sigma = sigma_loader.get_sigma(base_demand)
-
+        
         demand_strategy = NormalDemand(base_demand, empirical_sigma)
+        
         if category_id == 1:  # strict (молоко)
             sigma_buyer = params.sigma_buyer if params.sigma_buyer is not None else MILK_CUSTOMER_SIGMA
             customer_strategy = NormalCustomerStrategy(sigma_buyer)

@@ -5,6 +5,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
 import numpy as np
+import os
 from database.db_manager import DatabaseManager
 
 def show():
@@ -35,16 +36,93 @@ def show():
     selected_product = products_df[products_df['name'] == selected_product_name].iloc[0]
     product_category = selected_product['category']
     
-    # Отображаем информацию о товаре
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.metric("💰 Цена закупки", f"{selected_product['purchase_price']:.2f} руб")
-    with col2:
-        st.metric("💰 Цена продажи", f"{selected_product['sale_price']:.2f} руб")
-    with col3:
-        st.metric("📅 Срок годности", f"{selected_product['shelf_life_days']} дней")
-    with col4:
-        st.metric("📊 Базовый спрос", f"{selected_product['base_demand']:.0f} ед/день")
+    st.markdown("---")
+    
+    # ========== ДВА КОНТЕЙНЕРА РЯДОМ ==========
+    col_left, col_right = st.columns(2)
+    
+    # ===== ЛЕВЫЙ КОНТЕЙНЕР: Информация о товаре =====
+    with col_left:
+        st.subheader("📋 Информация о товаре")
+        
+        # Две строки по две характеристики
+        row1_col1, row1_col2 = st.columns(2)
+        with row1_col1:
+            st.metric("💰 Цена закупки", f"{selected_product['purchase_price']:.2f} руб")
+        with row1_col2:
+            st.metric("💰 Цена продажи", f"{selected_product['sale_price']:.2f} руб")
+        
+        row2_col1, row2_col2 = st.columns(2)
+        with row2_col1:
+            st.metric("📅 Срок годности", f"{selected_product['shelf_life_days']} дней")
+        with row2_col2:
+            st.metric("📊 Базовый спрос", f"{selected_product['base_demand']:.0f} ед/день")
+    
+    # ===== ПРАВЫЙ КОНТЕЙНЕР: Источник данных спроса =====
+    with col_right:
+        st.subheader("📊 Источник данных спроса")
+        
+        demand_source = st.radio(
+            "Выберите источник",
+            options=["generated", "excel"],
+            format_func=lambda x: "🎲 Генерировать случайно" if x == "generated" else "📁 Загрузить из Excel (реальные данные)",
+            horizontal=True,
+            key="demand_source"
+        )
+        
+        use_real_demand = False
+        real_demand_file = None
+        
+        if demand_source == "excel":
+            # Кнопка скачивания шаблона (маленькая, справа)
+            col_btn, _ = st.columns([1, 3])
+            with col_btn:
+                from core.data_loader import DemandDataLoader
+                template_path = "demand_template.xlsx"
+                DemandDataLoader.create_template(template_path)
+                
+                with open(template_path, "rb") as f:
+                    st.download_button(
+                        label="📥 Шаблон",
+                        data=f,
+                        file_name="demand_template.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        key="download_template",
+                        help="Скачать шаблон Excel для заполнения"
+                    )
+            
+            st.caption("📝 Заполните шаблон и загрузите ниже:")
+            
+            uploaded_file = st.file_uploader(
+                "Загрузите файл",
+                type=['xlsx', 'xls'],
+                help="Файл должен содержать колонки: 'Дата' и 'Спрос'",
+                key="demand_file",
+                label_visibility="collapsed"
+            )
+            
+            if uploaded_file is not None:
+                try:
+                    df = pd.read_excel(uploaded_file)
+                    
+                    has_date = any(col in df.columns for col in ['Дата', 'Date', 'ДАТА', 'date'])
+                    has_demand = any(col in df.columns for col in ['Спрос', 'Demand', 'demand', 'СПРОС'])
+                    
+                    if has_date and has_demand:
+                        import os
+                        os.makedirs("uploads", exist_ok=True)
+                        file_path = f"uploads/demand_{selected_product_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+                        
+                        with open(file_path, "wb") as f:
+                            f.write(uploaded_file.getbuffer())
+                        
+                        use_real_demand = True
+                        real_demand_file = file_path
+                        st.success(f"✅ Загружено {len(df)} записей")
+                    else:
+                        st.error("❌ Файл должен содержать колонки 'Дата' и 'Спрос'")
+                except Exception as e:
+                    st.error(f"❌ Ошибка: {e}")
     
     st.markdown("---")
     
@@ -111,7 +189,7 @@ def show():
             
             fifo_percent = 100
             lifo_percent = 0
-        
+    
     # ========== КНОПКА ЗАПУСКА ==========
     st.markdown("---")
     
@@ -139,7 +217,9 @@ def show():
                 "fifo_percent": float(fifo_percent) if product_category == "strict" else None,
                 "lifo_percent": float(lifo_percent) if product_category == "strict" else None,
                 "utilization_price": 5.0 if product_category == "strict" else 0.0,
-                "sigma_buyer": 1.51 if product_category == "strict" else None
+                "sigma_buyer": 1.51 if product_category == "strict" else None,
+                "use_real_demand": use_real_demand,
+                "real_demand_file": real_demand_file if use_real_demand else None
             }
             
             # Добавляем параметры поставок

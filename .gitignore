@@ -38,6 +38,10 @@ build/
 .DS_Store
 Thumbs.db
 
+uploads/
+*.xlsx
+*.xls
+
 # Другое
 *.db
 *.sqlite

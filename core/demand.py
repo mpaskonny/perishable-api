@@ -1,6 +1,8 @@
 from abc import ABC, abstractmethod
 import random
 import numpy as np
+from datetime import date
+from typing import Dict
 
 
 class DemandStrategy(ABC):
@@ -41,6 +43,8 @@ class NormalDemand(DemandStrategy):
 
 
 class FixedDemand(DemandStrategy):
+    """Фиксированный спрос (список значений по дням)"""
+    
     def __init__(self, demand_list):
         self.demand_list = demand_list
         self.day = 0
@@ -51,3 +55,29 @@ class FixedDemand(DemandStrategy):
             self.day += 1
             return demand
         return 20
+
+
+class RealDemand(DemandStrategy):
+    """
+    Стратегия спроса на основе реальных данных из Excel.
+    Если для даты нет данных, используется базовое значение.
+    """
+    
+    def __init__(self, demand_data: Dict[date, float], base_demand: float = 100.0):
+        """
+        Args:
+            demand_data: словарь {дата: спрос}
+            base_demand: значение по умолчанию, если для даты нет данных
+        """
+        self.demand_data = demand_data
+        self.base_demand = base_demand
+    
+    def get_demand(self, date, weekday_factors=None):
+        # Ищем спрос на конкретную дату
+        demand = self.demand_data.get(date.date(), self.base_demand)
+        
+        # Применяем коэффициенты дня недели (если есть)
+        if weekday_factors:
+            demand *= weekday_factors[date.weekday()]
+        
+        return int(round(demand))

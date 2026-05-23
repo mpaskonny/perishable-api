@@ -50,6 +50,10 @@ class SimulationParams(BaseModel):
     sigma_10: Optional[float] = 0.96  # устарело, оставлено для совместимости
     sigma_50: Optional[float] = 1.59  # устарело, оставлено для совместимости
 
+    # Поля для импорта данных
+    use_real_demand: bool = False
+    real_demand_file: Optional[str] = None  # путь к загруженному файлу
+
 
 class DailyResult(BaseModel):
     """Результаты одного дня симуляции"""
