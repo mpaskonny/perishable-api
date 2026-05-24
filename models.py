@@ -23,9 +23,9 @@ class SimulationParams(BaseModel):
     fixed_demand: Optional[List[float]] = None
     
     # Параметры порчи
-    spoilage_type: Optional[str] = "linear"  # "linear", "exponential", "logistic"
+    spoilage_type: Optional[str] = "linear"  # "linear", "power", "logistic"
     shelf_life_days: int = 30
-    exponential_k: Optional[float] = 0.15   # для экспоненциальной порчи
+    power_p: Optional[float] = 2.0   # для экспоненциальной порчи
     logistic_k: Optional[float] = 15.0      # для логистической порчи
     
     # Параметры поставок (общие)

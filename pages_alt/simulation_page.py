@@ -45,7 +45,6 @@ def show():
     with col_left:
         st.subheader("📋 Информация о товаре")
         
-        # Две строки по две характеристики
         row1_col1, row1_col2 = st.columns(2)
         with row1_col1:
             st.metric("💰 Цена закупки", f"{selected_product['purchase_price']:.2f} руб")
@@ -74,10 +73,10 @@ def show():
         real_demand_file = None
         
         if demand_source == "excel":
-            # Кнопка скачивания шаблона (маленькая, справа)
+            from core.data_loader import DemandDataLoader
+            
             col_btn, _ = st.columns([1, 3])
             with col_btn:
-                from core.data_loader import DemandDataLoader
                 template_path = "demand_template.xlsx"
                 DemandDataLoader.create_template(template_path)
                 
@@ -109,7 +108,6 @@ def show():
                     has_demand = any(col in df.columns for col in ['Спрос', 'Demand', 'demand', 'СПРОС'])
                     
                     if has_date and has_demand:
-                        import os
                         os.makedirs("uploads", exist_ok=True)
                         file_path = f"uploads/demand_{selected_product_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
                         
@@ -138,54 +136,50 @@ def show():
     # ПРАВЫЙ КОНТЕЙНЕР: зависит от типа продукта
     with col_right:
         if product_category == "strict":
-            # Для молока: распределение покупателей
             st.subheader("👥 Распределение покупателей")
             fifo_percent = st.slider("FIFO % (остальные LIFO)", 0, 100, 75, step=5, key="sim_fifo")
             lifo_percent = 100 - fifo_percent
             st.caption(f"📊 LIFO: {lifo_percent}%")
             spoilage_type = "strict"
-            exponential_k = 0.15
+            power_p = 2.0
             logistic_k = 15.0
         else:
-            # Для помидоров: параметры порчи (3 варианта)
             st.subheader("🕐 Параметры порчи")
             
             spoilage_type = st.selectbox(
                 "Тип порчи",
-                options=["linear", "exponential", "logistic"],
+                options=["linear", "power", "logistic"],
                 format_func=lambda x: {
                     "linear": "📈 Линейная (равномерное старение)",
-                    "exponential": "📉 Экспоненциальная (быстрое старение в начале)",
-                    "logistic": "📊 Логистическая (S-образная, резкое старение в конце)"
+                    "power": "📉 Степенная (ускорение к концу срока)",
+                    "logistic": "📊 Логистическая (S-образная)"
                 }[x],
                 key="sim_spoilage_type"
             )
             
-            if spoilage_type == "exponential":
-                exponential_k = st.slider(
-                    "Коэффициент крутизны (экспоненциальная)", 
-                    min_value=0.05, 
-                    max_value=0.5, 
-                    value=0.15, 
-                    step=0.01,
-                    help="Чем больше значение, тем быстрее порча в начале срока",
-                    key="sim_exp_k"
+            power_p = 2.0
+            logistic_k = 15.0
+            
+            if spoilage_type == "power":
+                power_p = st.slider(
+                    "Степень кривизны (p)", 
+                    min_value=1.5, 
+                    max_value=4.0, 
+                    value=2.0, 
+                    step=0.1,
+                    help="Чем больше p, тем резче рост порчи в конце срока",
+                    key="sim_power_p"
                 )
-                logistic_k = 15.0
             elif spoilage_type == "logistic":
                 logistic_k = st.slider(
-                    "Коэффициент крутизны (логистическая)", 
+                    "Коэффициент крутизны (k)", 
                     min_value=5.0, 
                     max_value=30.0, 
                     value=15.0, 
                     step=1.0,
-                    help="Чем больше значение, тем резче переход от свежего к испорченному",
+                    help="Чем больше k, тем резче переход от свежего к испорченному",
                     key="sim_log_k"
                 )
-                exponential_k = 0.15
-            else:  # linear
-                exponential_k = 0.15
-                logistic_k = 15.0
             
             fifo_percent = 100
             lifo_percent = 0
@@ -195,7 +189,6 @@ def show():
     
     if st.button("🚀 Запустить симуляцию", type="primary", use_container_width=True):
         with st.spinner("Симуляция выполняется..."):
-            # Получаем общие настройки из session_state
             settings = st.session_state.get('settings', {})
             
             params = {
@@ -207,8 +200,8 @@ def show():
                 "weekday_factors": settings.get('weekday_factors', [0.8, 0.6, 0.9, 1.0, 1.3, 1.5, 1.1]),
                 "spoilage_type": spoilage_type,
                 "shelf_life_days": int(selected_product['shelf_life_days']),
-                "exponential_k": exponential_k,
-                "logistic_k": logistic_k,
+                "power_p": power_p if spoilage_type == "power" else None,
+                "logistic_k": logistic_k if spoilage_type == "logistic" else None,
                 "delivery_type": settings.get('delivery_type', 'unit'),
                 "box_size": settings.get('box_size', 0),
                 "product_type": "milk" if product_category == "strict" else "tomatoes",
@@ -222,7 +215,6 @@ def show():
                 "real_demand_file": real_demand_file if use_real_demand else None
             }
             
-            # Добавляем параметры поставок
             schedule_type = settings.get('schedule_type', 'frequency')
             if product_category == "strict":
                 if schedule_type == 'frequency':

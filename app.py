@@ -288,7 +288,7 @@ def settings_dialog():
 
 
 # ========== ОСНОВНОЙ КОНТЕНТ ==========
-tab1, tab2, tab3 = st.tabs(["🏠 **Главная**", "🎮 **Симуляция**", "🗄️ **База данных**"])
+tab1, tab2, tab3, tab4 = st.tabs(["🏠 **Главная**", "🎮 **Симуляция**", "🗄️ **База данных**", "📖 **Помощь**"])
 
 # ========== ВКЛАДКА 1: ГЛАВНАЯ ==========
 with tab1:
@@ -421,3 +421,8 @@ with tab3:
     
     from pages_alt import database_page
     database_page.show()
+
+# ========== ВКЛАДКА 4: ПОМОЩЬ ==========
+with tab4:
+    from pages_alt import help_page
+    help_page.show()

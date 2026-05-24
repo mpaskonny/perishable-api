@@ -5,7 +5,7 @@ from core.demand import UniformDemand, NormalDemand, FixedDemand
 from core.customer import FixedCustomerStrategy, NormalCustomerStrategy
 from core.delivery import PeriodicDelivery, DaysOfWeekDelivery
 from core.spoilage import StrictExpirySpoilage
-from core.simple_spoilage import LinearSpoilage, ExponentialSpoilage, LogisticSpoilage
+from core.simple_spoilage import LinearSpoilage, PowerSpoilage, LogisticSpoilage
 from core.product import Product
 from database.db_manager import DatabaseManager
 from datetime import datetime
@@ -28,9 +28,6 @@ TOMATOES_NORMAL_SIGMA = 14.91
 
 # Молоко - параметры покупателей
 MILK_CUSTOMER_SIGMA = 1.51
-
-# Параметры экспоненциальной порчи по умолчанию
-DEFAULT_EXPONENTIAL_K = 15.0
 
 # Коэффициенты дней недели по умолчанию
 DEFAULT_WEEKDAY_FACTORS = [0.8, 0.6, 0.9, 1.0, 1.3, 1.5, 1.1]
@@ -126,9 +123,9 @@ def create_product(params: SimulationParams) -> Product:
         
         if params.spoilage_type == "linear":
             spoilage_strategy = LinearSpoilage(params.shelf_life_days)
-        elif params.spoilage_type == "exponential":
-            k = params.exponential_k if params.exponential_k else 0.15
-            spoilage_strategy = ExponentialSpoilage(params.shelf_life_days, k)
+        elif params.spoilage_type == "power":
+            p = params.power_p if hasattr(params, 'power_p') and params.power_p else 2.0
+            spoilage_strategy = PowerSpoilage(params.shelf_life_days, p)
         else:  # logistic
             k = params.logistic_k if hasattr(params, 'logistic_k') and params.logistic_k else 15.0
             spoilage_strategy = LogisticSpoilage(params.shelf_life_days, k)
