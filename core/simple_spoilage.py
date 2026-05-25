@@ -1,106 +1,130 @@
 import numpy as np
 from core.spoilage import SpoilageStrategy
+from core.spoilage_sigma_loader import get_spoilage_sigma_loader
 
 
 class LinearSpoilage(SpoilageStrategy):
-    """Линейная порча: каждый день портится фиксированный процент"""
+    """Линейная порча с вариативностью срока годности"""
     
     def __init__(self, shelf_life_days: int):
-        self.shelf_life_days = shelf_life_days
+        self.base_shelf_life = shelf_life_days
         self.daily_rate = 100.0 / shelf_life_days
     
+    def _get_actual_shelf_life(self) -> int:
+        """Генерирует фактический срок годности по нормальному закону с сигмой из файла"""
+        loader = get_spoilage_sigma_loader()
+        sigma = loader.get_sigma(self.base_shelf_life)
+        
+        actual = int(round(np.random.normal(self.base_shelf_life, sigma)))
+        return max(1, min(self.base_shelf_life * 2, actual))
+    
     def calculate_spoilage(self, batch, current_date):
+        if not hasattr(batch, 'actual_shelf_life'):
+            batch.actual_shelf_life = self._get_actual_shelf_life()
+        
         age_days = (current_date - batch.arrival_date).days
         
         if age_days <= 0:
             return 0
+        
+        if age_days >= batch.actual_shelf_life:
+            spoiled = batch.quantity
+            batch.quantity = 0
+            return spoiled
         
         daily_percent = self.daily_rate
         spoiled = batch.quantity * (daily_percent / 100)
-        
-        return min(spoiled, batch.quantity)
+        batch.quantity -= spoiled
+        return min(spoiled, batch.quantity + spoiled)
 
 
 class PowerSpoilage(SpoilageStrategy):
-    """
-    Степенная (параболическая) порча.
-    Товар долго остаётся свежим, затем быстро портится в конце срока.
-    Формула: S(t) = 100 * (t/T)^p
-    где t — возраст в днях, T — срок годности, p — степень кривизны
-    """
+    """Степенная (параболическая) порча с вариативностью срока годности"""
     
     def __init__(self, shelf_life_days: int, p: float = 2.0):
-        """
-        shelf_life_days: срок годности в днях
-        p: степень кривизны (1.5-4.0, чем больше, тем резче рост в конце)
-        """
-        self.shelf_life_days = shelf_life_days
+        self.base_shelf_life = shelf_life_days
         self.p = p
     
-    def _cumulative_rate(self, age_days: int) -> float:
-        """Накопленный процент порчи к возрасту age_days"""
+    def _get_actual_shelf_life(self) -> int:
+        loader = get_spoilage_sigma_loader()
+        sigma = loader.get_sigma(self.base_shelf_life)
+        
+        actual = int(round(np.random.normal(self.base_shelf_life, sigma)))
+        return max(1, min(self.base_shelf_life * 2, actual))
+    
+    def _cumulative_rate(self, age_days: int, shelf_life: int) -> float:
         if age_days <= 0:
             return 0
-        if age_days >= self.shelf_life_days:
+        if age_days >= shelf_life:
             return 100.0
-        
-        t = age_days / self.shelf_life_days
-        return 100 * (t ** self.p)
+        return 100 * ((age_days / shelf_life) ** self.p)
     
     def calculate_spoilage(self, batch, current_date):
+        if not hasattr(batch, 'actual_shelf_life'):
+            batch.actual_shelf_life = self._get_actual_shelf_life()
+        
         age_days = (current_date - batch.arrival_date).days
+        shelf = batch.actual_shelf_life
         
         if age_days <= 0:
             return 0
+        if age_days >= shelf:
+            spoiled = batch.quantity
+            batch.quantity = 0
+            return spoiled
         
-        cum_today = self._cumulative_rate(age_days)
-        cum_yesterday = self._cumulative_rate(age_days - 1)
+        cum_today = self._cumulative_rate(age_days, shelf)
+        cum_yesterday = self._cumulative_rate(age_days - 1, shelf)
         daily_percent = cum_today - cum_yesterday
         daily_percent = max(0, min(100, daily_percent))
         
         spoiled = batch.quantity * (daily_percent / 100)
-        return min(spoiled, batch.quantity)
+        batch.quantity -= spoiled
+        return spoiled
 
 
 class LogisticSpoilage(SpoilageStrategy):
-    """
-    Логистическая (S-образная) порча.
-    В начале товар почти не портится, затем резко портится в конце срока.
-    Формула: S(t) = 100 / (1 + e^(-k * (t - 0.5)))
-    """
+    """Логистическая (S-образная) порча с вариативностью срока годности"""
     
     def __init__(self, shelf_life_days: int, k: float = 15.0):
-        """
-        shelf_life_days: срок годности в днях
-        k: коэффициент крутизны (5-30, чем больше, тем резче переход)
-        """
-        self.shelf_life_days = shelf_life_days
+        self.base_shelf_life = shelf_life_days
         self.k = k
     
-    def _cumulative_rate(self, t: float) -> float:
-        """
-        Накопленный процент порчи к моменту t (0..1)
-        """
-        if t <= 0:
-            return 0
-        if t >= 1:
-            return 100.0
+    def _get_actual_shelf_life(self) -> int:
+        loader = get_spoilage_sigma_loader()
+        sigma = loader.get_sigma(self.base_shelf_life)
         
+        actual = int(round(np.random.normal(self.base_shelf_life, sigma)))
+        return max(1, min(self.base_shelf_life * 2, actual))
+    
+    def _cumulative_rate(self, age_days: int, shelf_life: int) -> float:
+        if age_days <= 0:
+            return 0
+        if age_days >= shelf_life:
+            return 100.0
+        t = age_days / shelf_life
         return 100 / (1 + np.exp(-self.k * (t - 0.5)))
     
     def calculate_spoilage(self, batch, current_date):
+        if not hasattr(batch, 'actual_shelf_life'):
+            batch.actual_shelf_life = self._get_actual_shelf_life()
+        
         age_days = (current_date - batch.arrival_date).days
+        shelf = batch.actual_shelf_life
         
         if age_days <= 0:
             return 0
+        if age_days >= shelf:
+            spoiled = batch.quantity
+            batch.quantity = 0
+            return spoiled
         
-        t = age_days / self.shelf_life_days
-        t_prev = (age_days - 1) / self.shelf_life_days
-        
-        cum_today = self._cumulative_rate(t)
-        cum_yesterday = self._cumulative_rate(t_prev)
+        cum_today = self._cumulative_rate(age_days, shelf)
+        cum_yesterday = self._cumulative_rate(age_days - 1, shelf)
         daily_percent = cum_today - cum_yesterday
         daily_percent = max(0, min(100, daily_percent))
         
         spoiled = batch.quantity * (daily_percent / 100)
-        return min(spoiled, batch.quantity)
+        batch.quantity -= spoiled
+        return spoiled
+    
