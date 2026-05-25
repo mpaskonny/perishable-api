@@ -1,8 +1,8 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from models import SimulationParams, SimulationResponse, DailyResult
-from core.demand import UniformDemand, NormalDemand, FixedDemand
-from core.customer import FixedCustomerStrategy, NormalCustomerStrategy
+from core.demand import UniformDemand, NormalDemand, FixedDemand, RealDemand
+from core.customer import FixedCustomerStrategy, NormalCustomerStrategy, NormalCustomerStrategyFromExcel
 from core.delivery import PeriodicDelivery, DaysOfWeekDelivery
 from core.spoilage import StrictExpirySpoilage
 from core.simple_spoilage import LinearSpoilage, PowerSpoilage, LogisticSpoilage
@@ -10,8 +10,9 @@ from core.product import Product
 from database.db_manager import DatabaseManager
 from datetime import datetime
 from core.sigma_loader import get_sigma_loader
+from core.fifo_sigma_loader import get_fifo_sigma_loader
 from core.data_loader import DemandDataLoader
-from core.demand import RealDemand
+
 
 # ========== КОНСТАНТЫ ==========
 # Молоко - параметры спроса
@@ -26,8 +27,9 @@ TOMATOES_UNIFORM_MAX = 200
 TOMATOES_NORMAL_MEAN = 175
 TOMATOES_NORMAL_SIGMA = 14.91
 
-# Молоко - параметры покупателей
-MILK_CUSTOMER_SIGMA = 1.51
+# Параметры экспоненциальной порчи по умолчанию
+DEFAULT_POWER_P = 2.0
+DEFAULT_LOGISTIC_K = 15.0
 
 # Коэффициенты дней недели по умолчанию
 DEFAULT_WEEKDAY_FACTORS = [0.8, 0.6, 0.9, 1.0, 1.3, 1.5, 1.1]
@@ -66,7 +68,7 @@ def create_product(params: SimulationParams) -> Product:
     category_id = product_data.get('id_category')
     base_demand = product_data.get('base_demand', 100)
     
-    # ========== 1. СТРАТЕГИЯ СПРОСА (из настроек симуляции) ==========
+    # ========== 1. СТРАТЕГИЯ СПРОСА ==========
     if params.use_real_demand and params.real_demand_file:
         # Реальный спрос из Excel
         try:
@@ -93,8 +95,10 @@ def create_product(params: SimulationParams) -> Product:
         demand_strategy = NormalDemand(base_demand, empirical_sigma)
         
         if category_id == 1:  # strict (молоко)
-            sigma_buyer = params.sigma_buyer if params.sigma_buyer is not None else MILK_CUSTOMER_SIGMA
-            customer_strategy = NormalCustomerStrategy(sigma_buyer)
+            # Загружаем сигмы для FIFO/LIFO из Excel
+            fifo_loader = get_fifo_sigma_loader()
+            sigma_fifo, sigma_lifo = fifo_loader.get_sigmas(int(params.fifo_percent or 75))
+            customer_strategy = NormalCustomerStrategyFromExcel(sigma_fifo, sigma_lifo)
         else:
             customer_strategy = FixedCustomerStrategy()
     
@@ -124,10 +128,10 @@ def create_product(params: SimulationParams) -> Product:
         if params.spoilage_type == "linear":
             spoilage_strategy = LinearSpoilage(params.shelf_life_days)
         elif params.spoilage_type == "power":
-            p = params.power_p if hasattr(params, 'power_p') and params.power_p else 2.0
+            p = params.power_p if params.power_p else DEFAULT_POWER_P
             spoilage_strategy = PowerSpoilage(params.shelf_life_days, p)
         else:  # logistic
-            k = params.logistic_k if hasattr(params, 'logistic_k') and params.logistic_k else 15.0
+            k = params.logistic_k if params.logistic_k else DEFAULT_LOGISTIC_K
             spoilage_strategy = LogisticSpoilage(params.shelf_life_days, k)
     
     # ========== 4. КОЭФФИЦИЕНТЫ ДНЕЙ НЕДЕЛИ ==========
@@ -163,7 +167,8 @@ async def root():
         "features": [
             "Строгая порча (молоко) - мгновенное списание после expiry_date",
             "Линейная порча - равномерное старение",
-            "Экспоненциальная порча - ускоряющееся старение"
+            "Степенная порча - ускорение к концу срока",
+            "Логистическая порча - S-образная"
         ]
     }
 
@@ -172,26 +177,17 @@ async def root():
 async def simulate(params: SimulationParams):
     """
     Универсальная симуляция управления запасами
-    
-    Поддерживает:
-    - Разные типы порчи (strict/linear/exponential)
-    - Разные законы спроса (uniform/normal)
-    - Разные стратегии поставок (periodic/days_of_week)
-    - FIFO/LIFO для строгих продуктов
     """
     try:
-        # Создаём продукт с нужными стратегиями
         product = create_product(params)
         
-        # Запускаем симуляцию
         results = product.run(
             days=params.days, 
             start_date=params.start_date, 
-            fifo_percent=params.fifo_percent or 100.0,  # Для gradual продуктов FIFO не используется
+            fifo_percent=params.fifo_percent or 100.0,
             lifo_percent=params.lifo_percent or 0.0
         )
         
-        # Преобразуем историю в формат DailyResult
         daily_results = []
         for h in results['daily_history']:
             if params.product_type == "milk":
@@ -216,7 +212,7 @@ async def simulate(params: SimulationParams):
                     batch_5_stock=float(h.get('batch_5_stock', 0)) if h.get('batch_5_stock') else None,
                     unmet_demand=float(h.get('unmet_demand', 0))
                 ))
-            else:  # gradual products (tomatoes, etc.)
+            else:
                 daily_results.append(DailyResult(
                     day=h['day'],
                     date=h['date'],
@@ -234,7 +230,6 @@ async def simulate(params: SimulationParams):
                     stock_week3=float(h.get('stock_week3', 0))
                 ))
         
-        # Формируем ответ
         return SimulationResponse(
             total_revenue=results['total_revenue'],
             total_cost=results['total_cost'],
