@@ -83,8 +83,16 @@ def create_product(params: SimulationParams) -> Product:
         customer_strategy = FixedCustomerStrategy()
         
     elif params.distribution == "uniform":
-        # Равномерный спрос: от 0.5x до 1.5x от базового
-        demand_strategy = UniformDemand(base_demand * 0.5, base_demand * 1.5)
+        # Равномерный спрос: если границы заданы пользователем — используем их
+        if params.demand_min is not None and params.demand_max is not None:
+            demand_min = params.demand_min
+            demand_max = params.demand_max
+        else:
+            # Иначе автоматически от 0.5x до 1.5x
+            demand_min = base_demand * 0.5
+            demand_max = base_demand * 1.5
+        
+        demand_strategy = UniformDemand(demand_min, demand_max)
         customer_strategy = FixedCustomerStrategy()
         
     else:  # normal
@@ -95,7 +103,6 @@ def create_product(params: SimulationParams) -> Product:
         demand_strategy = NormalDemand(base_demand, empirical_sigma)
         
         if category_id == 1:  # strict (молоко)
-            # Загружаем сигмы для FIFO/LIFO из Excel
             fifo_loader = get_fifo_sigma_loader()
             sigma_fifo, sigma_lifo = fifo_loader.get_sigmas(int(params.fifo_percent or 75))
             customer_strategy = NormalCustomerStrategyFromExcel(sigma_fifo, sigma_lifo)

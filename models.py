@@ -22,6 +22,10 @@ class SimulationParams(BaseModel):
     weekday_factors: Optional[List[float]] = [0.8, 0.6, 0.9, 1.0, 1.3, 1.5, 1.1]
     fixed_demand: Optional[List[float]] = None
     
+    # Параметры равномерного спроса (ручной ввод)
+    demand_min: Optional[float] = None
+    demand_max: Optional[float] = None
+    
     # Параметры порчи
     spoilage_type: Optional[str] = "linear"  # "linear", "power", "logistic"
     shelf_life_days: int = 30
@@ -43,7 +47,7 @@ class SimulationParams(BaseModel):
     # Параметры для молока
     fifo_percent: Optional[float] = 75.0
     lifo_percent: Optional[float] = 25.0
-    sigma_buyer: Optional[float] = 1.51      # устарело, оставлено для совместимости
+    sigma_buyer: Optional[float] = 1.51
     utilization_price: Optional[float] = 5.0
     
     # Параметры для помидоров

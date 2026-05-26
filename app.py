@@ -39,7 +39,6 @@ st.markdown("""
             width: 100% !important;
         }
         
-        /* Каждая вкладка - растянута по ширине */
         .stTabs [data-baseweb="tab"] {
             font-size: 1.1rem !important;
             font-weight: 500 !important;
@@ -62,7 +61,6 @@ st.markdown("""
             color: white !important;
         }
         
-        /* Стили для главной страницы */
         .simulation-title {
             font-size: 2rem;
             font-weight: bold;
@@ -187,31 +185,84 @@ if 'settings' not in st.session_state:
         'box_size': 20,
         'delivery_frequency': 2,
         'delivery_days': [0, 3],
-        'schedule_type': 'frequency'
+        'schedule_type': 'frequency',
+        'use_custom_bounds': False,
+        'demand_min': None,
+        'demand_max': None
     }
 
 
-# ========== МОДАЛЬНОЕ ОКНО НАСТРОЕК (ОБЩИЕ) ==========
+# ========== МОДАЛЬНОЕ ОКНО НАСТРОЕК ==========
 @st.dialog("⚙️ **Настройки симуляции**", width="large")
 def settings_dialog():
     """Модальное окно с общими настройками"""
+    
+    # Получаем базовый спрос из session_state (устанавливается в simulation_page)
+    base_demand = st.session_state.get('current_base_demand', 100)
     
     col1, col2 = st.columns(2)
     
     with col1:
         st.subheader("📊 Параметры спроса")
+        
         distribution = st.selectbox(
             "Закон распределения",
             options=["uniform", "normal"],
             format_func=lambda x: "📊 Равномерный" if x == "uniform" else "📈 Нормальный",
-            index=0 if st.session_state.settings['distribution'] == 'uniform' else 1,
+            index=0 if st.session_state.settings.get('distribution') == 'uniform' else 1,
             key="dialog_distribution"
         )
         
+        if distribution == "uniform":
+            use_custom_bounds = st.checkbox(
+                "🎯 Задать границы спроса вручную",
+                value=st.session_state.settings.get('use_custom_bounds', False),
+                key="dialog_use_custom_bounds"
+            )
+            
+            if use_custom_bounds:
+                col_min, col_max = st.columns(2)
+                with col_min:
+                    demand_min = st.number_input(
+                        "Мин. спрос (ед/день)",
+                        min_value=0.0,
+                        value=st.session_state.settings.get('demand_min', base_demand * 0.5),
+                        step=5.0,
+                        key="dialog_demand_min"
+                    )
+                with col_max:
+                    demand_max = st.number_input(
+                        "Макс. спрос (ед/день)",
+                        min_value=0.0,
+                        value=st.session_state.settings.get('demand_max', base_demand * 1.5),
+                        step=5.0,
+                        key="dialog_demand_max"
+                    )
+                
+                if demand_min is not None and demand_max is not None:
+                    if demand_min >= demand_max:
+                        st.error("❌ Мин. спрос должен быть меньше макс. спроса")
+                    
+                    calculated_mean = (demand_min + demand_max) / 2
+                    if abs(calculated_mean - base_demand) > 0.1:
+                        st.warning(f"⚠️ Среднее значение ({calculated_mean:.1f}) отличается от базового спроса в БД ({base_demand:.1f})")
+                        st.caption("Вы можете продолжить или скорректировать границы.")
+                
+                st.caption(f"📊 Базовый спрос из БД: {base_demand:.0f} ед/день")
+            else:
+                demand_min = None
+                demand_max = None
+                st.caption(f"📊 Автоматически: от {base_demand * 0.5:.0f} до {base_demand * 1.5:.0f} ед/день")
+        else:
+            demand_min = None
+            demand_max = None
+        
+        # Коэффициенты дней недели
+        st.markdown("---")
         st.subheader("📅 Коэффициенты спроса по дням недели")
         st.info("Базовый спрос умножается на коэффициент дня недели")
         
-        factors = st.session_state.settings['weekday_factors']
+        factors = st.session_state.settings.get('weekday_factors', [0.8, 0.6, 0.9, 1.0, 1.3, 1.5, 1.1])
         cols = st.columns(7)
         with cols[0]: mon = st.number_input("Пн", value=factors[0], step=0.1, format="%.1f", key="dialog_mon")
         with cols[1]: tue = st.number_input("Вт", value=factors[1], step=0.1, format="%.1f", key="dialog_tue")
@@ -220,6 +271,7 @@ def settings_dialog():
         with cols[4]: fri = st.number_input("Пт", value=factors[4], step=0.1, format="%.1f", key="dialog_fri")
         with cols[5]: sat = st.number_input("Сб", value=factors[5], step=0.1, format="%.1f", key="dialog_sat")
         with cols[6]: sun = st.number_input("Вс", value=factors[6], step=0.1, format="%.1f", key="dialog_sun")
+        
         weekday_factors = [mon, tue, wed, thu, fri, sat, sun]
     
     with col2:
@@ -229,11 +281,11 @@ def settings_dialog():
             options=["unit", "box"], 
             format_func=lambda x: "📦 Штучно" if x == "unit" else "📦 Коробками/ящиками",
             horizontal=True,
-            index=0 if st.session_state.settings['delivery_type'] == 'unit' else 1,
+            index=0 if st.session_state.settings.get('delivery_type') == 'unit' else 1,
             key="dialog_delivery_type"
         )
         
-        box_size = st.session_state.settings['box_size']
+        box_size = st.session_state.settings.get('box_size', 20)
         if delivery_type == "box":
             box_size = st.number_input("Размер упаковки (шт/кг)", min_value=1, value=box_size, step=5, key="dialog_box_size")
         
@@ -243,7 +295,7 @@ def settings_dialog():
             options=["frequency", "days"],
             format_func=lambda x: "📅 Периодичность (каждые N дней)" if x == "frequency" else "📅 Конкретные дни недели",
             horizontal=True,
-            index=0 if st.session_state.settings['schedule_type'] == 'frequency' else 1,
+            index=0 if st.session_state.settings.get('schedule_type') == 'frequency' else 1,
             key="dialog_schedule"
         )
         
@@ -252,7 +304,7 @@ def settings_dialog():
                 "Периодичность поставок (дней)", 
                 min_value=1, 
                 max_value=365, 
-                value=st.session_state.settings['delivery_frequency'],
+                value=st.session_state.settings.get('delivery_frequency', 2),
                 step=1,
                 key="dialog_freq"
             )
@@ -261,7 +313,7 @@ def settings_dialog():
             delivery_frequency = 0
             day_map = {"Пн": 0, "Вт": 1, "Ср": 2, "Чт": 3, "Пт": 4, "Сб": 5, "Вс": 6}
             reverse_map = {0: "Пн", 1: "Вт", 2: "Ср", 3: "Чт", 4: "Пт", 5: "Сб", 6: "Вс"}
-            current_days = [reverse_map[d] for d in st.session_state.settings['delivery_days']]
+            current_days = [reverse_map[d] for d in st.session_state.settings.get('delivery_days', [0, 3])]
             selected_days = st.multiselect(
                 "Дни поставок", 
                 options=["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"], 
@@ -282,7 +334,10 @@ def settings_dialog():
                 'box_size': box_size,
                 'delivery_frequency': delivery_frequency,
                 'delivery_days': delivery_days,
-                'schedule_type': schedule_type
+                'schedule_type': schedule_type,
+                'use_custom_bounds': use_custom_bounds if distribution == "uniform" else False,
+                'demand_min': demand_min if distribution == "uniform" and use_custom_bounds else None,
+                'demand_max': demand_max if distribution == "uniform" and use_custom_bounds else None
             }
             st.rerun()
 
@@ -331,7 +386,7 @@ with tab1:
                 <li><b>Строгий срок годности</b> (молоко)<br>
                 Порча наступает мгновенно после истечения срока</li>
                 <li><b>Постепенная порча</b> (овощи/фрукты)<br>
-                Порча нарастает по дням (линейно или экспоненциально)</li>
+                Порча нарастает по дням (линейно, степенная, логистическая)</li>
             </ul>
         </div>
         """, unsafe_allow_html=True)
@@ -341,10 +396,10 @@ with tab1:
         <div class="feature-card">
             <div class="feature-title">📊 Гибкие настройки</div>
             <ul>
+                <li>Три модели порчи</li>
                 <li>Два закона распределения спроса</li>
                 <li>Стратегии поставок (периодические / по дням)</li>
                 <li>Поведение покупателей (FIFO / LIFO)</li>
-                <li>Поставки штучно или коробками/ящиками</li>
             </ul>
         </div>
         """, unsafe_allow_html=True)
@@ -370,7 +425,7 @@ with tab1:
     <div class="steps-container">
         <p><span class="step-number">1</span> <span class="step-text">Перейдите на вкладку <b>«Симуляция»</b> сверху</span></p>
         <p><span class="step-number">2</span> <span class="step-text">Выберите продукт из базы данных</span></p>
-        <p><span class="step-number">3</span> <span class="step-text">Настройте параметры симуляции (количество дней, минимальный запас)</span></p>
+        <p><span class="step-number">3</span> <span class="step-text">Настройте параметры симуляции (количество дней, целевой запас, тип порчи)</span></p>
         <p><span class="step-number">4</span> <span class="step-text">При необходимости откройте <b>«Настройки»</b> (⚙️) для изменения законов спроса и поставок</span></p>
         <p><span class="step-number">5</span> <span class="step-text">Нажмите <b>«Запустить симуляцию»</b> и анализируйте результаты</span></p>
         <p style="margin-top: 1rem;"><span class="step-text">🗄️ Для добавления собственных товаров перейдите на вкладку <b>«База данных»</b></span></p>
@@ -422,7 +477,8 @@ with tab3:
     from pages_alt import database_page
     database_page.show()
 
+
 # ========== ВКЛАДКА 4: ПОМОЩЬ ==========
 with tab4:
-    from pages_alt import help_page
-    help_page.show()
+    from pages_alt.help_page import show as help_page_show
+    help_page_show()

@@ -36,6 +36,9 @@ def show():
     selected_product = products_df[products_df['name'] == selected_product_name].iloc[0]
     product_category = selected_product['category']
     
+    # ========== СОХРАНЯЕМ БАЗОВЫЙ СПРОС В SESSION_STATE ==========
+    st.session_state.current_base_demand = selected_product['base_demand']
+    
     st.markdown("---")
     
     # ========== ДВА КОНТЕЙНЕРА РЯДОМ ==========
@@ -191,17 +194,24 @@ def show():
         with st.spinner("Симуляция выполняется..."):
             settings = st.session_state.get('settings', {})
             
+            # Получаем параметры спроса из настроек
+            distribution = settings.get('distribution', 'uniform')
+            demand_min = settings.get('demand_min')
+            demand_max = settings.get('demand_max')
+            
             params = {
                 "days": days,
                 "min_stock": float(min_stock),
                 "purchase_price": float(selected_product['purchase_price']),
                 "sale_price": float(selected_product['sale_price']),
-                "distribution": settings.get('distribution', 'uniform'),
+                "distribution": distribution,
                 "weekday_factors": settings.get('weekday_factors', [0.8, 0.6, 0.9, 1.0, 1.3, 1.5, 1.1]),
                 "spoilage_type": spoilage_type,
                 "shelf_life_days": int(selected_product['shelf_life_days']),
                 "power_p": power_p if spoilage_type == "power" else None,
                 "logistic_k": logistic_k if spoilage_type == "logistic" else None,
+                "demand_min": demand_min,
+                "demand_max": demand_max,
                 "delivery_type": settings.get('delivery_type', 'unit'),
                 "box_size": settings.get('box_size', 0),
                 "product_type": "milk" if product_category == "strict" else "tomatoes",
@@ -241,7 +251,7 @@ def show():
                     'data': data,
                     'total_unmet': total_unmet,
                     'params': params,
-                    'distribution': settings.get('distribution', 'uniform'),
+                    'distribution': distribution,
                     'product_category': product_category,
                     'selected_product_name': selected_product_name,
                     'days': days,
@@ -260,6 +270,7 @@ def show():
         display_simulation_results(st.session_state.simulation_results)
 
 
+# Функция display_simulation_results остаётся без изменений
 def display_simulation_results(results):
     """Отображает результаты симуляции"""
     if results is None:
