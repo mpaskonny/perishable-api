@@ -321,6 +321,49 @@ def settings_dialog():
                 key="dialog_days"
             )
             delivery_days = [day_map[d] for d in selected_days]
+        
+        st.markdown("---")
+        st.subheader("💰 Стоимость доставки")
+
+        delivery_cost_type = st.selectbox(
+            "Тип расчёта",
+            options=["none", "fixed", "rate", "combined"],
+            format_func=lambda x: {
+                "none": "🚫 Не учитывать",
+                "fixed": "📦 Фиксированная (за одну поставку)",
+                "rate": "📊 Тариф за кг/шт",
+                "combined": "🔧 Комбинированная (фикс + тариф)"
+            }[x],
+            index=["none", "fixed", "rate", "combined"].index(
+                st.session_state.settings.get('delivery_cost_type', 'none')
+            ),
+            key="dialog_delivery_cost_type"
+        )
+
+        delivery_fixed_cost = 0.0
+        delivery_rate_cost = 0.0
+
+        if delivery_cost_type in ["fixed", "combined"]:
+            delivery_fixed_cost = st.number_input(
+                "Фиксированная стоимость (руб)",
+                min_value=0.0,
+                value=st.session_state.settings.get('delivery_fixed_cost', 500.0),
+                step=50.0,
+                key="dialog_delivery_fixed"
+            )
+
+        if delivery_cost_type in ["rate", "combined"]:
+            delivery_rate_cost = st.number_input(
+                "Тариф за кг/шт (руб)",
+                min_value=0.0,
+                value=st.session_state.settings.get('delivery_rate_cost', 5.0),
+                step=1.0,
+                key="dialog_delivery_rate"
+            )
+
+        if delivery_cost_type != "none":
+            st.caption(f"📊 Пример: при заказе 100 кг стоимость = "
+                    f"{delivery_fixed_cost + delivery_rate_cost * 100:.0f} руб")
     
     st.markdown("---")
     
@@ -337,7 +380,10 @@ def settings_dialog():
                 'schedule_type': schedule_type,
                 'use_custom_bounds': use_custom_bounds if distribution == "uniform" else False,
                 'demand_min': demand_min if distribution == "uniform" and use_custom_bounds else None,
-                'demand_max': demand_max if distribution == "uniform" and use_custom_bounds else None
+                'demand_max': demand_max if distribution == "uniform" and use_custom_bounds else None,
+                'delivery_cost_type': delivery_cost_type,
+                'delivery_fixed_cost': delivery_fixed_cost,
+                'delivery_rate_cost': delivery_rate_cost
             }
             st.rerun()
 

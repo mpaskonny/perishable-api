@@ -58,6 +58,11 @@ class SimulationParams(BaseModel):
     use_real_demand: bool = False
     real_demand_file: Optional[str] = None
 
+    # Параметры доставки
+    delivery_cost_type: Optional[str] = "fixed"  # "fixed", "rate", "combined"
+    delivery_fixed_cost: float = 0.0             # фиксированная стоимость заказа
+    delivery_rate_cost: float = 0.0              # тариф за единицу (кг/шт)
+
 
 class DailyResult(BaseModel):
     """Результаты одного дня симуляции"""
@@ -97,6 +102,9 @@ class SimulationResponse(BaseModel):
     
     total_revenue: float
     total_cost: float
+    total_purchase_cost: float       
+    total_delivery_cost: float       
+    total_utilization_cost: float    
     total_spoilage_kg: float
     total_spoilage_money: float
     profit: float

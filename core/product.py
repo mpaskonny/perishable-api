@@ -8,7 +8,7 @@ class Batch:
     def __init__(self, arrival_date: datetime, quantity: float, expiry_date: datetime = None):
         self.arrival_date = arrival_date
         self.quantity = quantity
-        self.initial_quantity = quantity  # Сохраняем начальное количество для расчёта порчи
+        self.initial_quantity = quantity
         self.expiry_date = expiry_date
 
 
@@ -39,7 +39,6 @@ class Product(ABC):
         self.is_strict = is_strict
         self.utilization_price = utilization_price
         
-        # Стратегии
         self.demand = demand_strategy
         self.spoilage = spoilage_strategy
         self.customer = customer_strategy
@@ -49,25 +48,22 @@ class Product(ABC):
         self.delivery_type = delivery_type
         self.box_size = box_size
         
-        # Состояние склада
         self.batches: List[Batch] = []
         self.history = []
         
-        # Финансовые метрики
         self.total_revenue = 0.0
         self.total_purchase_cost = 0.0
+        self.total_delivery_cost = 0.0
         self.total_spoilage_kg = 0.0
         self.total_spoilage_money = 0.0
         self.total_utilization_cost = 0.0
         
-        # Статистика по покупателям (для молока)
         self.fifo_rates = []
         self.lifo_rates = []
     
     def init_batches(self, start_date: datetime):
         """Инициализирует начальные партии на складе"""
         if self.is_strict:
-            # Для строгих продуктов (молоко) — партии разного возраста
             self.batches = [
                 Batch(start_date - timedelta(days=5), self.min_stock * 0.5,
                       start_date + timedelta(days=self.shelf_life_days - 5)),
@@ -75,17 +71,11 @@ class Product(ABC):
                       start_date + timedelta(days=self.shelf_life_days - 2))
             ]
         else:
-            # Для постепенных продуктов (помидоры) — одна свежая партия
             self.batches = [Batch(start_date, self.min_stock)]
     
     def _process_sales(self, demand: float, current_date: datetime, 
-                    fifo_percent: float, lifo_percent: float):
-        """
-        Обрабатывает продажи:
-        - Для strict (молоко): FIFO/LIFO
-        - Для gradual (помидоры): пропорционально
-        """
-        
+                       fifo_percent: float, lifo_percent: float):
+        """Обрабатывает продажи с учётом FIFO/LIFO"""
         if not self.batches or demand <= 0:
             return 0, 0, 0, 0, demand
         
@@ -93,7 +83,6 @@ class Product(ABC):
         if total_stock == 0:
             return 0, 0, 0, 0, demand
         
-        # ===== ДЛЯ GRADUAL ПРОДУКТОВ (пропорционально) =====
         if not self.is_strict:
             ratio = min(1.0, demand / total_stock)
             total_sold = 0
@@ -106,18 +95,15 @@ class Product(ABC):
             self.total_revenue += revenue
             return total_sold, revenue, 0, 0, max(0, demand - total_sold)
         
-        # ===== ДЛЯ STRICT ПРОДУКТОВ (FIFO/LIFO) =====
         fifo_wanted, lifo_wanted = self.customer.get_sales_distribution(
             demand, fifo_percent, lifo_percent
         )
         
-        # Создаём копии партий
         working_batches = [Batch(b.arrival_date, b.quantity, b.expiry_date) for b in self.batches]
         
         fifo_actual = 0
         lifo_actual = 0
         
-        # FIFO: из старых партий
         for batch in sorted(working_batches, key=lambda b: b.arrival_date):
             if fifo_actual >= fifo_wanted:
                 break
@@ -125,7 +111,6 @@ class Product(ABC):
             batch.quantity -= take
             fifo_actual += take
         
-        # LIFO: из новых партий
         remaining_for_lifo = min(lifo_wanted, demand - fifo_actual)
         for batch in sorted(working_batches, key=lambda b: b.arrival_date, reverse=True):
             if lifo_actual >= remaining_for_lifo:
@@ -150,10 +135,7 @@ class Product(ABC):
         return total_sold, revenue, fifo_actual, lifo_actual, unmet_demand
     
     def _process_spoilage(self, current_date: datetime):
-        """
-        Обрабатывает порчу товара
-        Возвращает: spoiled_kg, spoiled_money
-        """
+        """Обрабатывает порчу товара"""
         spoiled_kg = 0.0
         spoiled_money = 0.0
         
@@ -161,23 +143,18 @@ class Product(ABC):
             if batch.quantity > 0:
                 spoiled = self.spoilage.calculate_spoilage(batch, current_date)
                 if spoiled > 0:
-                    # Ограничиваем порчу остатком
                     spoiled = min(spoiled, batch.quantity)
                     batch.quantity -= spoiled
                     spoiled_kg += spoiled
                     spoiled_money += spoiled * self.purchase_price
                     
-                    # Затраты на утилизацию
                     if self.utilization_price > 0:
                         self.total_utilization_cost += spoiled * self.utilization_price
         
         return spoiled_kg, spoiled_money
     
     def _process_delivery(self, day: int, current_date: datetime):
-        """
-        Обрабатывает поставку товара
-        Возвращает количество заказанного товара
-        """
+        """Обрабатывает поставку товара"""
         total_stock = sum(b.quantity for b in self.batches)
         
         if self.delivery.should_deliver(day, current_date, total_stock, self.min_stock):
@@ -191,24 +168,23 @@ class Product(ABC):
                 if order > 0:
                     self._add_batch(current_date, order)
                     self.total_purchase_cost += order * self.purchase_price
+                    
+                    delivery_cost = self.delivery.calculate_delivery_cost(order)
+                    self.total_delivery_cost += delivery_cost
+                    
                     return order
         return 0
     
     def _add_batch(self, current_date: datetime, quantity: float):
         """Добавляет новую партию на склад"""
         if self.is_strict:
-            # Для строгих продуктов добавляем срок годности
             expiry_date = current_date + timedelta(days=self.shelf_life_days)
             self.batches.append(Batch(current_date, quantity, expiry_date))
         else:
-            # Для постепенных продуктов только дата поставки
             self.batches.append(Batch(current_date, quantity))
     
     def _get_age_groups(self, current_date: datetime):
-        """
-        Группирует остатки по возрасту (для помидоров)
-        Возвращает словарь с остатками по неделям
-        """
+        """Группирует остатки по возрасту"""
         age_groups = {0: 0.0, 1: 0.0, 2: 0.0}
         
         for batch in self.batches:
@@ -226,27 +202,22 @@ class Product(ABC):
                     sold: float, revenue: float, spoiled_kg: float,
                     spoiled_money: float, order: float, fifo_sold: float, 
                     lifo_sold: float, purchase_cost: float, unmet_demand: float = 0.0):
-        """
-        Записывает результаты дня в историю
-        """
+        """Записывает результаты дня в историю"""
         end_stock = sum(b.quantity for b in self.batches)
         start_stock = end_stock + sold + spoiled_kg
         age_groups = self._get_age_groups(current_date)
         
-        # Сохраняем первые 5 партий для отладки
         batch_stocks = {}
         for i, batch in enumerate(sorted(self.batches, key=lambda b: b.arrival_date), 1):
             if i <= 5:
                 batch_stocks[f'batch_{i}_stock'] = round(batch.quantity, 2)
         
-        # Проценты FIFO/LIFO за день
         fifo_percent_actual = None
         lifo_percent_actual = None
         if fifo_sold + lifo_sold > 0:
             fifo_percent_actual = round(fifo_sold / (fifo_sold + lifo_sold) * 100, 2)
             lifo_percent_actual = round(lifo_sold / (fifo_sold + lifo_sold) * 100, 2)
         
-        # Затраты на утилизацию
         utilization_cost = round(spoiled_kg * self.utilization_price, 2) if self.utilization_price > 0 else 0.0
         
         self.history.append({
@@ -275,61 +246,39 @@ class Product(ABC):
     
     def run(self, days: int, start_date: datetime, 
             fifo_percent: float, lifo_percent: float) -> Dict[str, Any]:
-        """
-        Запускает симуляцию на указанное количество дней
+        """Запускает симуляцию на указанное количество дней"""
         
-        Args:
-            days: Количество дней симуляции
-            start_date: Дата начала
-            fifo_percent: Процент покупателей FIFO
-            lifo_percent: Процент покупателей LIFO
-        
-        Returns:
-            Словарь с результатами симуляции
-        """
-
-        
-        # Инициализация
         self.init_batches(start_date)
         self.history = []
         self.fifo_rates = []
         self.lifo_rates = []
         self.total_revenue = 0.0
         
-        # Начальные затраты (начальный запас)
         initial_cost = sum(b.quantity for b in self.batches) * self.purchase_price
         self.total_purchase_cost = initial_cost
+        self.total_delivery_cost = 0.0
         self.total_spoilage_kg = 0.0
         self.total_spoilage_money = 0.0
         self.total_utilization_cost = 0.0
         
-        # Основной цикл симуляции
         for day in range(1, days + 1):
             current_date = start_date + timedelta(days=day - 1)
-            
-            # 1. Генерируем спрос
             demand = self.demand.get_demand(current_date, self.weekday_factors)
             
-            # 2. Поставка (утром)
             order = self._process_delivery(day, current_date)
             purchase_cost = order * self.purchase_price if order else 0.0
             
-            # 3. Продажи (днём)
             sold, revenue, fifo_sold, lifo_sold, unmet_demand = self._process_sales(
                 demand, current_date, fifo_percent, lifo_percent
             )
             
-            # 4. Порча (вечером)
             spoiled_kg, spoiled_money = self._process_spoilage(current_date)
             
-            # Обновляем общую статистику
             self.total_spoilage_kg += spoiled_kg
             self.total_spoilage_money += spoiled_money
             
-            # Удаляем пустые партии
             self.batches = [b for b in self.batches if b.quantity > 0]
             
-            # 5. Записываем день в историю
             self._record_day(day, current_date, demand, sold, revenue, 
                            spoiled_kg, spoiled_money, order, fifo_sold, 
                            lifo_sold, purchase_cost, unmet_demand)
@@ -337,10 +286,7 @@ class Product(ABC):
         return self._get_results()
     
     def _get_results(self) -> Dict[str, Any]:
-        """
-        Собирает и возвращает итоговые результаты симуляции
-        """
-        # Статистика по покупателям (FIFO/LIFO)
+        """Собирает и возвращает итоговые результаты симуляции"""
         buyer_stats = {}
         if self.fifo_rates:
             buyer_stats['fifo_mean'] = sum(self.fifo_rates) / len(self.fifo_rates)
@@ -348,24 +294,28 @@ class Product(ABC):
             buyer_stats['lifo_mean'] = sum(self.lifo_rates) / len(self.lifo_rates)
             buyer_stats['lifo_rates'] = self.lifo_rates
         
-
-        # Расчёт среднескладского остатка
-        # Среднее арифметическое между остатками на начало дня
         daily_start_stocks = [day['start_stock'] for day in self.history]
-        avg_stock = sum(daily_start_stocks) / len(daily_start_stocks) if daily_start_stocks else 0
-
+        avg_stock = sum(daily_start_stocks) / len(daily_start_stocks) if daily_start_stocks else 0.0
+        max_stock = max(daily_start_stocks) if daily_start_stocks else 0.0
+        min_stock = min(daily_start_stocks) if daily_start_stocks else 0.0
+        
         return {
             'total_revenue': self.total_revenue,
-            'total_cost': self.total_purchase_cost + self.total_utilization_cost,
+            'total_cost': self.total_purchase_cost + self.total_delivery_cost + self.total_utilization_cost,
+            'total_purchase_cost': self.total_purchase_cost,
+            'total_delivery_cost': self.total_delivery_cost,
+            'total_utilization_cost': self.total_utilization_cost,
             'total_spoilage_kg': self.total_spoilage_kg,
             'total_spoilage_money': self.total_spoilage_money,
-            'profit': self.total_revenue - self.total_purchase_cost - self.total_utilization_cost,
+            'profit': self.total_revenue - self.total_purchase_cost - self.total_delivery_cost - self.total_utilization_cost,
             'avg_stock': avg_stock,
+            'max_stock': max_stock,
+            'min_stock': min_stock,
             'daily_history': self.history,
             'demand_stats': {
                 'mean': sum(h['demand'] for h in self.history) / len(self.history),
                 'min': min(h['demand'] for h in self.history),
                 'max': max(h['demand'] for h in self.history)
             },
-            'spoilage_stats': buyer_stats  # Для совместимости со старым кодом
+            'spoilage_stats': buyer_stats
         }

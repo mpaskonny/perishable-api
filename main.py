@@ -110,18 +110,55 @@ def create_product(params: SimulationParams) -> Product:
             customer_strategy = FixedCustomerStrategy()
     
     # ========== 2. СТРАТЕГИЯ ПОСТАВОК ==========
+
+    # Обработка параметров доставки
+    if params.delivery_cost_type == "none":
+        cost_type = "fixed"
+        fixed_cost = 0.0
+        rate_cost = 0.0
+    else:
+        cost_type = params.delivery_cost_type
+        fixed_cost = params.delivery_fixed_cost
+        rate_cost = params.delivery_rate_cost
+
+    # Убедимся, что значения не None
+    if fixed_cost is None:
+        fixed_cost = 0.0
+    if rate_cost is None:
+        rate_cost = 0.0
+
     if category_id == 1:  # strict (молоко)
         if params.milk_delivery_frequency and params.milk_delivery_frequency > 0:
-            delivery_strategy = PeriodicDelivery(params.milk_delivery_frequency)
+            delivery_strategy = PeriodicDelivery(
+                params.milk_delivery_frequency,
+                cost_type=cost_type,
+                fixed_cost=fixed_cost,
+                rate_cost=rate_cost
+            )
         else:
             delivery_days = params.milk_delivery_days if params.milk_delivery_days is not None else []
-            delivery_strategy = DaysOfWeekDelivery(delivery_days)
+            delivery_strategy = DaysOfWeekDelivery(
+                delivery_days,
+                cost_type=cost_type,
+                fixed_cost=fixed_cost,
+                rate_cost=rate_cost
+            )
     else:  # gradual products
         if params.tomatoes_delivery_frequency and params.tomatoes_delivery_frequency > 0:
-            delivery_strategy = PeriodicDelivery(params.tomatoes_delivery_frequency)
+            delivery_strategy = PeriodicDelivery(
+                params.tomatoes_delivery_frequency,
+                cost_type=cost_type,
+                fixed_cost=fixed_cost,
+                rate_cost=rate_cost
+            )
         else:
             delivery_days = params.tomatoes_delivery_days if params.tomatoes_delivery_days is not None else []
-            delivery_strategy = DaysOfWeekDelivery(delivery_days)
+            delivery_strategy = DaysOfWeekDelivery(
+                delivery_days,
+                cost_type=cost_type,
+                fixed_cost=fixed_cost,
+                rate_cost=rate_cost
+            )
     
     # ========== 3. СТРАТЕГИЯ ПОРЧИ ==========
     if category_id == 1:  # strict (молоко)
@@ -240,6 +277,9 @@ async def simulate(params: SimulationParams):
         return SimulationResponse(
             total_revenue=results['total_revenue'],
             total_cost=results['total_cost'],
+            total_purchase_cost=results.get('total_purchase_cost', 0),      
+            total_delivery_cost=results.get('total_delivery_cost', 0),      
+            total_utilization_cost=results.get('total_utilization_cost', 0), 
             total_spoilage_kg=results['total_spoilage_kg'],
             total_spoilage_money=results['total_spoilage_money'],
             profit=results['profit'],

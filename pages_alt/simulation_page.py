@@ -222,7 +222,12 @@ def show():
                 "utilization_price": 5.0 if product_category == "strict" else 0.0,
                 "sigma_buyer": 1.51 if product_category == "strict" else None,
                 "use_real_demand": use_real_demand,
-                "real_demand_file": real_demand_file if use_real_demand else None
+                "real_demand_file": real_demand_file if use_real_demand else None,
+
+                    # Параметры доставки
+                "delivery_cost_type": settings.get('delivery_cost_type', 'fixed'),
+                "delivery_fixed_cost": settings.get('delivery_fixed_cost', 0.0),
+                "delivery_rate_cost": settings.get('delivery_rate_cost', 0.0)
             }
             
             schedule_type = settings.get('schedule_type', 'frequency')
@@ -334,16 +339,26 @@ def display_simulation_results(results):
     # ========== МЕТРИКИ ==========
     st.markdown("---")
     col1, col2, col3, col4, col5, col6 = st.columns(6)
+
     with col1:
         st.metric("Выручка", f"{data['total_revenue']:,.0f} руб")
+
     with col2:
         st.metric("Затраты", f"{data['total_cost']:,.0f} руб")
+        # Детализация затрат (всегда показываем)
+        st.caption(f"├ Закупка: {data.get('total_purchase_cost', 0):,.0f} руб")
+        st.caption(f"├ Доставка: {data.get('total_delivery_cost', 0):,.0f} руб")
+        st.caption(f"└ Утилизация: {data.get('total_utilization_cost', 0):,.0f} руб")
+
     with col3:
         st.metric("Прибыль", f"{data['profit']:,.0f} руб")
+
     with col4:
         st.metric("Потери", f"{data['total_spoilage_kg']:.1f} кг")
+
     with col5:
         st.metric("Неудовлетворенный спрос", f"{total_unmet:.0f} кг")
+
     with col6:
         st.metric("📦 Средний остаток", f"{data.get('avg_stock', 0):.1f} кг")
     
