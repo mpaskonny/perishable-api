@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from models import SimulationParams, SimulationResponse, DailyResult
-from core.demand import UniformDemand, NormalDemand, FixedDemand, RealDemand
+from core.demand import UniformDemand, NormalDemand, FixedDemand, RealDemand, RealDemandWithInterpolation
 from core.customer import FixedCustomerStrategy, NormalCustomerStrategy, NormalCustomerStrategyFromExcel
 from core.delivery import PeriodicDelivery, DaysOfWeekDelivery
 from core.spoilage import StrictExpirySpoilage
@@ -69,14 +69,23 @@ def create_product(params: SimulationParams) -> Product:
     base_demand = product_data.get('base_demand', 100)
     
     # ========== 1. СТРАТЕГИЯ СПРОСА ==========
-    if params.use_real_demand and params.real_demand_file:
-        # Реальный спрос из Excel
+    if params.use_real_demand and params.real_demand_dates and params.real_demand_values:
+        # Реальный спрос с реальными датами из Excel
         try:
-            demand_data = DemandDataLoader.load_from_excel(params.real_demand_file)
-            demand_strategy = RealDemand(demand_data, base_demand)
+            demand_data = {}
+            for date_str, demand in zip(params.real_demand_dates, params.real_demand_values):
+                date = datetime.strptime(date_str, '%Y-%m-%d').date()
+                demand_data[date] = demand
+            
+            demand_strategy = RealDemandWithInterpolation(demand_data, base_demand)
             customer_strategy = FixedCustomerStrategy()
+            
+            # Обновляем start_date на реальную дату начала из файла
+            if params.real_start_date:
+                params.start_date = datetime.fromisoformat(params.real_start_date)
+            
         except Exception as e:
-            raise HTTPException(status_code=400, detail=f"Ошибка загрузки Excel: {str(e)}")
+            raise HTTPException(status_code=400, detail=f"Ошибка обработки данных: {str(e)}")
 
     elif params.fixed_demand:
         demand_strategy = FixedDemand(params.fixed_demand)
@@ -110,7 +119,7 @@ def create_product(params: SimulationParams) -> Product:
             customer_strategy = FixedCustomerStrategy()
     
     # ========== 2. СТРАТЕГИЯ ПОСТАВОК ==========
-    
+
     # Обработка параметров доставки
     if params.delivery_cost_type == "none":
         cost_type = "fixed"

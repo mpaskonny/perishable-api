@@ -1,7 +1,7 @@
 import pandas as pd
 import os
 from datetime import datetime
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 
 
 class DemandDataLoader:
@@ -50,12 +50,13 @@ class DemandDataLoader:
         
         return demand_dict
     
+    
     @staticmethod
     def create_template(file_path: str = "demand_template.xlsx"):
         """Создаёт шаблон Excel для заполнения пользователем"""
         template = pd.DataFrame({
             'Дата': [datetime.now().date()],
-            'Спрос': [100]  # ← колонка называется 'Спрос', не 'Спрос (кг/шт)'
+            'Спрос': [100]
         })
         template.to_excel(file_path, index=False)
         return file_path

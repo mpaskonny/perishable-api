@@ -54,22 +54,23 @@ class SimulationParams(BaseModel):
     sigma_10: Optional[float] = 0.96
     sigma_50: Optional[float] = 1.59
     
-    # Поля для импорта данных
-    use_real_demand: bool = False
-    real_demand_file: Optional[str] = None
-
     # Параметры доставки
     delivery_cost_type: Optional[str] = "fixed"
     delivery_fixed_cost: float = 0.0
     delivery_rate_cost: float = 0.0
-
+    
     # Параметры расписания поставок
     schedule_type: Optional[str] = "frequency"
     delivery_frequency: Optional[int] = 2
     delivery_days: Optional[List[int]] = [0, 3]
     reorder_point: Optional[float] = None
     max_stock: Optional[float] = None
-
+    
+    # Поля для импорта данных (реальные даты из Excel)
+    use_real_demand: bool = False
+    real_demand_dates: Optional[List[str]] = None      # список дат в формате YYYY-MM-DD
+    real_demand_values: Optional[List[float]] = None   # список значений спроса
+    real_start_date: Optional[str] = None              # ISO формат даты начала
 
 class DailyResult(BaseModel):
     """Результаты одного дня симуляции"""

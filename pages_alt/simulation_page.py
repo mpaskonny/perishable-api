@@ -3,7 +3,7 @@ import requests
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from datetime import datetime
+from datetime import datetime, timedelta
 import numpy as np
 import os
 from database.db_manager import DatabaseManager
@@ -77,6 +77,7 @@ def show():
         
         if demand_source == "excel":
             from core.data_loader import DemandDataLoader
+            import io
             
             col_btn, _ = st.columns([1, 3])
             with col_btn:
@@ -103,6 +104,11 @@ def show():
                 label_visibility="collapsed"
             )
             
+            use_real_demand = False
+            real_demand_dates = None
+            real_demand_values = None
+            real_start_date = None
+            
             if uploaded_file is not None:
                 try:
                     df = pd.read_excel(uploaded_file)
@@ -111,15 +117,28 @@ def show():
                     has_demand = any(col in df.columns for col in ['Спрос', 'Demand', 'demand', 'СПРОС'])
                     
                     if has_date and has_demand:
-                        os.makedirs("uploads", exist_ok=True)
-                        file_path = f"uploads/demand_{selected_product_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+                        # Определяем колонку с датами
+                        date_col = None
+                        for col in ['Дата', 'Date', 'ДАТА', 'date']:
+                            if col in df.columns:
+                                date_col = col
+                                break
                         
-                        with open(file_path, "wb") as f:
-                            f.write(uploaded_file.getbuffer())
+                        # Преобразуем даты
+                        dates = pd.to_datetime(df[date_col])
+                        start_date_dt = dates.min()
+                        end_date_dt = dates.max()
+                        days_count = (end_date_dt - start_date_dt).days + 1
+                        
+                        # Сохраняем данные
+                        real_demand_dates = dates.dt.strftime('%Y-%m-%d').tolist()
+                        real_demand_values = df['Спрос'].tolist()
+                        real_start_date = start_date_dt.isoformat()
                         
                         use_real_demand = True
-                        real_demand_file = file_path
-                        st.success(f"✅ Загружено {len(df)} записей")
+                        
+                        st.success(f"✅ Загружено {len(df)} записей. Период: {start_date_dt.strftime('%d.%m.%Y')} — {end_date_dt.strftime('%d.%m.%Y')}")
+                        st.info(f"📅 Количество дней симуляции: {days_count}")
                     else:
                         st.error("❌ Файл должен содержать колонки 'Дата' и 'Спрос'")
                 except Exception as e:
@@ -128,22 +147,33 @@ def show():
     st.markdown("---")
     
     # ========== ДВЕ КОЛОНКИ С КОНТЕЙНЕРАМИ ==========
-    col_left, col_right = st.columns(2)
-    
     # ЛЕВЫЙ КОНТЕЙНЕР: Параметры симуляции
     with col_left:
         st.subheader("⚙️ Параметры симуляции")
-        days = st.slider("📅 Количество дней симуляции", 10, 365, 30, key="sim_days")
+        
+        # Инициализация переменных
+        days = 30
+        min_stock = 300.0
+        start_date = datetime(2026, 2, 1)
+        
+        # Если используем реальные данные — используем сохранённые даты
+        if demand_source == "excel" and use_real_demand and real_start_date:
+            start_date_dt = datetime.fromisoformat(real_start_date)
+            end_date_dt = datetime.fromisoformat(real_start_date) + timedelta(days=len(real_demand_dates) - 1)
+            days = len(real_demand_dates)
+            
+            st.info(f"📅 Симуляция по загруженным данным: {start_date_dt.strftime('%d.%m.%Y')} — {end_date_dt.strftime('%d.%m.%Y')} (всего {days} дней)")
+        else:
+            days = st.slider("📅 Количество дней симуляции", 10, 365, 30, key="sim_days")
         
         # Показываем поле только если не выбрана (s, S)-стратегия
         settings = st.session_state.get('settings', {})
         if settings.get('schedule_type') != 'ss_policy':
             min_stock = st.number_input("📦 Целевой уровень запаса", min_value=0.0, value=300.0, step=50.0, key="sim_min_stock")
         else:
-            # При (s, S)-стратегии показываем информацию
             st.info(f"📊 (s, S)-стратегия: заказ при остатке ниже {settings.get('reorder_point', 100):.0f} до {settings.get('max_stock', 300):.0f}")
             min_stock = settings.get('max_stock', 300)
-    
+
     # ПРАВЫЙ КОНТЕЙНЕР: зависит от типа продукта
     with col_right:
         if product_category == "strict":
@@ -208,41 +238,52 @@ def show():
             demand_max = settings.get('demand_max')
             
             params = {
+                # Базовые параметры
                 "days": days,
                 "min_stock": float(min_stock),
                 "purchase_price": float(selected_product['purchase_price']),
                 "sale_price": float(selected_product['sale_price']),
+                "start_date": start_date.strftime('%Y-%m-%dT%H:%M:%S') if hasattr(start_date, 'strftime') else datetime(2026, 2, 1).isoformat(),
+                
+                # Параметры спроса
                 "distribution": distribution,
                 "weekday_factors": settings.get('weekday_factors', [0.8, 0.6, 0.9, 1.0, 1.3, 1.5, 1.1]),
+                "demand_min": demand_min,
+                "demand_max": demand_max,
+                
+                # Параметры порчи
                 "spoilage_type": spoilage_type,
                 "shelf_life_days": int(selected_product['shelf_life_days']),
                 "power_p": power_p if spoilage_type == "power" else None,
                 "logistic_k": logistic_k if spoilage_type == "logistic" else None,
-                "demand_min": demand_min,
-                "demand_max": demand_max,
+                
+                # Параметры поставок
                 "delivery_type": settings.get('delivery_type', 'unit'),
                 "box_size": settings.get('box_size', 0),
+                "schedule_type": settings.get('schedule_type', 'frequency'),
+                "delivery_frequency": settings.get('delivery_frequency', 2),
+                "delivery_days": settings.get('delivery_days', []),
+                "reorder_point": settings.get('reorder_point'),
+                "max_stock": settings.get('max_stock'),
+                
+                # Параметры доставки
+                "delivery_cost_type": settings.get('delivery_cost_type', 'fixed'),
+                "delivery_fixed_cost": settings.get('delivery_fixed_cost', 0.0),
+                "delivery_rate_cost": settings.get('delivery_rate_cost', 0.0),
+                
+                # Прочее
                 "product_type": "milk" if product_category == "strict" else "tomatoes",
-                "start_date": datetime(2026, 2, 1).isoformat(),
                 "product_name": selected_product_name,
                 "fifo_percent": float(fifo_percent) if product_category == "strict" else None,
                 "lifo_percent": float(lifo_percent) if product_category == "strict" else None,
                 "utilization_price": 5.0 if product_category == "strict" else 0.0,
                 "sigma_buyer": 1.51 if product_category == "strict" else None,
+                
+                # Поля для импорта данных (реальные даты)
                 "use_real_demand": use_real_demand,
-                "real_demand_file": real_demand_file if use_real_demand else None,
-
-                # Параметры доставки
-                "delivery_cost_type": settings.get('delivery_cost_type', 'fixed'),
-                "delivery_fixed_cost": settings.get('delivery_fixed_cost', 0.0),
-                "delivery_rate_cost": settings.get('delivery_rate_cost', 0.0),
-
-                # Параметры расписания поставок
-                "schedule_type": settings.get('schedule_type', 'frequency'),
-                "delivery_frequency": settings.get('delivery_frequency', 2),
-                "delivery_days": settings.get('delivery_days', []),
-                "reorder_point": settings.get('reorder_point'),
-                "max_stock": settings.get('max_stock')
+                "real_demand_dates": real_demand_dates if use_real_demand else None,
+                "real_demand_values": real_demand_values if use_real_demand else None,
+                "real_start_date": real_start_date if use_real_demand else None,
             }
             
             schedule_type = settings.get('schedule_type', 'frequency')
@@ -290,7 +331,7 @@ def show():
         display_simulation_results(st.session_state.simulation_results)
 
 
-# Функция display_simulation_results остаётся без изменений
+# Функция display_simulation_results (без изменений)
 def display_simulation_results(results):
     """Отображает результаты симуляции"""
     if results is None:
@@ -360,7 +401,6 @@ def display_simulation_results(results):
 
     with col2:
         st.metric("Затраты", f"{data['total_cost']:,.0f} руб")
-        # Детализация затрат (всегда показываем)
         st.caption(f"├ Закупка: {data.get('total_purchase_cost', 0):,.0f} руб")
         st.caption(f"├ Доставка: {data.get('total_delivery_cost', 0):,.0f} руб")
         st.caption(f"└ Утилизация: {data.get('total_utilization_cost', 0):,.0f} руб")
@@ -497,12 +537,38 @@ def display_simulation_results(results):
     with st.expander("📋 Детальная история по дням"):
         df_display = df.copy()
         
-        columns_to_drop = ['fifo_sales', 'lifo_sales', 'total_sales', 'life_sales']
+        # Удаляем лишние колонки
+        columns_to_drop = ['fifo_sales', 'lifo_sales', 'total_sales', 'life_sales', 'spoilage_money']
         for col in columns_to_drop:
             if col in df_display.columns:
                 df_display = df_display.drop(columns=[col])
         
+        # Удаляем дублирующую колонку spoilage (если есть)
+        if 'spoilage' in df_display.columns and 'spoilage_kg' in df_display.columns:
+            df_display = df_display.drop(columns=['spoilage'])
+        
+        # Даты уже в правильном формате из API, ничего не делаем
+        
+        # Переставляем колонки: Порча и Порча % от остатка после Продажи
+        if 'spoilage_kg' in df_display.columns and 'Порча % от остатка' not in df_display.columns:
+            if 'start_stock' in df_display.columns:
+                df_display['Порча % от остатка'] = df_display.apply(
+                    lambda row: round((row['spoilage_kg'] / row['start_stock'] * 100), 2) 
+                    if row['start_stock'] > 0 else 0, axis=1
+                )
+        
+        # Определяем порядок колонок
+        base_columns = ['day', 'date', 'demand', 'start_stock', 'sales']
+        middle_columns = ['spoilage_kg', 'Порча % от остатка', 'order']
+        remaining_columns = [col for col in df_display.columns if col not in base_columns + middle_columns + ['day', 'date']]
+        
+        # Собираем колонки в нужном порядке
+        ordered_columns = base_columns + middle_columns + remaining_columns
+        df_display = df_display[[col for col in ordered_columns if col in df_display.columns]]
+ 
+        
         if product_category == "strict":
+            # Для молока
             milk_cols = ['stock_week1', 'stock_week2', 'stock_week3']
             for col in milk_cols:
                 if col in df_display.columns:
@@ -514,9 +580,10 @@ def display_simulation_results(results):
                 'demand': 'Спрос (пакеты)',
                 'start_stock': 'Остаток на начало (пакеты)',
                 'sales': 'Продажи (пакеты)',
-                'unmet_demand': 'Неудовлетворенный спрос (пакеты)',
                 'spoilage_kg': 'Порча (пакеты)',
+                'Порча % от остатка': 'Порча % от остатка',
                 'order': 'Заказ (пакеты)',
+                'unmet_demand': 'Неудовлетворенный спрос (пакеты)',
                 'revenue': 'Выручка (руб)',
                 'purchase_cost': 'Затраты на закупку (руб)',
                 'utilization_cost': 'Затраты на утилизацию (руб)',
@@ -530,9 +597,10 @@ def display_simulation_results(results):
                 if col in df_display.columns:
                     column_names[col] = f'Партия {i}'
         else:
+            # Для помидоров (gradual)
             tomato_cols = ['fifo_percent', 'lifo_percent', 'utilization_cost', 
-                          'batch_1_stock', 'batch_2_stock', 'batch_3_stock', 
-                          'batch_4_stock', 'batch_5_stock', 'fifo_sales', 'lifo_sales']
+                        'batch_1_stock', 'batch_2_stock', 'batch_3_stock', 
+                        'batch_4_stock', 'batch_5_stock', 'fifo_sales', 'lifo_sales']
             for col in tomato_cols:
                 if col in df_display.columns:
                     df_display = df_display.drop(columns=[col])
@@ -543,9 +611,10 @@ def display_simulation_results(results):
                 'demand': 'Спрос (кг)',
                 'start_stock': 'Остаток на начало (кг)',
                 'sales': 'Продажи (кг)',
-                'unmet_demand': 'Неудовлетворенный спрос (кг)',
                 'spoilage_kg': 'Порча (кг)',
+                'Порча % от остатка': 'Порча % от остатка',
                 'order': 'Заказ (кг)',
+                'unmet_demand': 'Неудовлетворенный спрос (кг)',
                 'revenue': 'Выручка (руб)',
                 'purchase_cost': 'Затраты на закупку (руб)',
                 'end_stock': 'Остаток на конец (кг)',
@@ -553,13 +622,6 @@ def display_simulation_results(results):
                 'stock_week2': 'Остаток 8-14 дней (кг)',
                 'stock_week3': 'Остаток 15+ дней (кг)'
             }
-            
-            if 'start_stock' in df_display.columns and 'spoilage_kg' in df_display.columns:
-                df_display['Порча % от остатка'] = df_display.apply(
-                    lambda row: round((row['spoilage_kg'] / row['start_stock'] * 100), 2) 
-                    if row['start_stock'] > 0 else 0, axis=1
-                )
-                column_names['Порча % от остатка'] = 'Порча % от остатка'
         
         existing_columns = {k: v for k, v in column_names.items() if k in df_display.columns}
         df_display = df_display.fillna(0)
@@ -569,5 +631,5 @@ def display_simulation_results(results):
         
         csv = df_display.to_csv(index=False).encode('utf-8-sig')
         st.download_button(label="📥 Скачать таблицу (CSV)", data=csv,
-                          file_name=f"{selected_product_name}_simulation_{days}_days.csv", 
-                          mime="text/csv")
+                        file_name=f"{selected_product_name}_simulation_{days}_days.csv", 
+                        mime="text/csv")

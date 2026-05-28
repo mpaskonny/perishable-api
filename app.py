@@ -1,4 +1,6 @@
 import streamlit as st
+import glob
+import os
 
 st.set_page_config(
     page_title="Симулятор продуктов",
@@ -197,6 +199,10 @@ if 'settings' not in st.session_state:
 def settings_dialog():
     """Модальное окно с общими настройками"""
     
+    # Очищаем временные результаты при открытии окна
+    if 'calculated_factors' in st.session_state:
+        st.session_state.calculated_factors = None
+    
     # Получаем базовый спрос из session_state (устанавливается в simulation_page)
     base_demand = st.session_state.get('current_base_demand', 100)
     
@@ -261,7 +267,7 @@ def settings_dialog():
         st.markdown("---")
         st.subheader("📅 Коэффициенты спроса по дням недели")
         st.info("Базовый спрос умножается на коэффициент дня недели")
-        
+
         factors = st.session_state.settings.get('weekday_factors', [0.8, 0.6, 0.9, 1.0, 1.3, 1.5, 1.1])
         cols = st.columns(7)
         with cols[0]: mon = st.number_input("Пн", value=factors[0], step=0.1, format="%.1f", key="dialog_mon")
@@ -273,6 +279,7 @@ def settings_dialog():
         with cols[6]: sun = st.number_input("Вс", value=factors[6], step=0.1, format="%.1f", key="dialog_sun")
         
         weekday_factors = [mon, tue, wed, thu, fri, sat, sun]
+        
     
     with col2:
         st.subheader("🚚 Параметры поставок")
@@ -406,6 +413,9 @@ def settings_dialog():
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         if st.button("✅ Сохранить настройки", type="primary", use_container_width=True, key="dialog_save"):
+            # Получаем текущий min_stock из session_state или используем значение по умолчанию
+            current_min_stock = st.session_state.settings.get('min_stock', 300)
+            
             st.session_state.settings = {
                 'distribution': distribution,
                 'weekday_factors': weekday_factors,
@@ -424,8 +434,10 @@ def settings_dialog():
                 # Параметры (s, S)-стратегии
                 'reorder_point': reorder_point if schedule_type == "ss_policy" else None,
                 'max_stock': max_stock if schedule_type == "ss_policy" else None,
-                'min_stock': max_stock if schedule_type == "ss_policy" else st.session_state.settings.get('min_stock', 300)
+                # Сохраняем min_stock (для совместимости)
+                'min_stock': max_stock if schedule_type == "ss_policy" else current_min_stock
             }
+            st.success("✅ Настройки сохранены!")
             st.rerun()
 
 

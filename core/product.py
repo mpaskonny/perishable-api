@@ -222,7 +222,7 @@ class Product(ABC):
         
         self.history.append({
             'day': day,
-            'date': current_date.strftime('%d.%m'),
+            'date': current_date.strftime('%d.%m.%Y'),
             'demand': round(demand, 2),
             'start_stock': round(start_stock, 2),
             'sales': round(sold, 2),

@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 import random
 import numpy as np
-from datetime import date
+from datetime import date, datetime
 from typing import Dict
 
 
@@ -81,3 +81,62 @@ class RealDemand(DemandStrategy):
             demand *= weekday_factors[date.weekday()]
         
         return int(round(demand))
+
+class RealDemandWithInterpolation(DemandStrategy):
+    """
+    Спрос из реальных данных с интерполяцией пропущенных дней
+    """
+    
+    def __init__(self, demand_data: Dict[datetime.date, float], base_demand: float = 100.0):
+        self.demand_data = demand_data
+        self.base_demand = base_demand
+    
+    def get_demand(self, date, weekday_factors=None):
+        date_key = date.date()
+        
+        # Если есть точное значение — используем
+        if date_key in self.demand_data:
+            demand = self.demand_data[date_key]
+        else:
+            # Для пропущенных дней — интерполяция между соседними
+            demand = self._interpolate_demand(date_key)
+        
+        if weekday_factors:
+            demand *= weekday_factors[date.weekday()]
+        
+        return int(round(demand))
+    
+    def _interpolate_demand(self, target_date):
+        """Линейная интерполяция между ближайшими известными датами"""
+        dates = sorted(self.demand_data.keys())
+        
+        # Находим ближайшую предыдущую и следующую даты
+        prev_date = None
+        next_date = None
+        
+        for d in dates:
+            if d < target_date:
+                prev_date = d
+            elif d > target_date:
+                next_date = d
+                break
+        
+        if prev_date is None and next_date is None:
+            return self.base_demand
+        elif prev_date is None:
+            return self.demand_data[next_date]
+        elif next_date is None:
+            return self.demand_data[prev_date]
+        
+        # Линейная интерполяция
+        prev_demand = self.demand_data[prev_date]
+        next_demand = self.demand_data[next_date]
+        
+        days_diff = (next_date - prev_date).days
+        days_from_prev = (target_date - prev_date).days
+        
+        if days_diff == 0:
+            return prev_demand
+        
+        ratio = days_from_prev / days_diff
+        return prev_demand + (next_demand - prev_demand) * ratio
