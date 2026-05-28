@@ -134,7 +134,15 @@ def show():
     with col_left:
         st.subheader("⚙️ Параметры симуляции")
         days = st.slider("📅 Количество дней симуляции", 10, 365, 30, key="sim_days")
-        min_stock = st.number_input("📦 Целевой уровень запаса", min_value=0.0, value=300.0, step=50.0, key="sim_min_stock")
+        
+        # Показываем поле только если не выбрана (s, S)-стратегия
+        settings = st.session_state.get('settings', {})
+        if settings.get('schedule_type') != 'ss_policy':
+            min_stock = st.number_input("📦 Целевой уровень запаса", min_value=0.0, value=300.0, step=50.0, key="sim_min_stock")
+        else:
+            # При (s, S)-стратегии показываем информацию
+            st.info(f"📊 (s, S)-стратегия: заказ при остатке ниже {settings.get('reorder_point', 100):.0f} до {settings.get('max_stock', 300):.0f}")
+            min_stock = settings.get('max_stock', 300)
     
     # ПРАВЫЙ КОНТЕЙНЕР: зависит от типа продукта
     with col_right:
@@ -224,10 +232,17 @@ def show():
                 "use_real_demand": use_real_demand,
                 "real_demand_file": real_demand_file if use_real_demand else None,
 
-                    # Параметры доставки
+                # Параметры доставки
                 "delivery_cost_type": settings.get('delivery_cost_type', 'fixed'),
                 "delivery_fixed_cost": settings.get('delivery_fixed_cost', 0.0),
-                "delivery_rate_cost": settings.get('delivery_rate_cost', 0.0)
+                "delivery_rate_cost": settings.get('delivery_rate_cost', 0.0),
+
+                # Параметры расписания поставок
+                "schedule_type": settings.get('schedule_type', 'frequency'),
+                "delivery_frequency": settings.get('delivery_frequency', 2),
+                "delivery_days": settings.get('delivery_days', []),
+                "reorder_point": settings.get('reorder_point'),
+                "max_stock": settings.get('max_stock')
             }
             
             schedule_type = settings.get('schedule_type', 'frequency')

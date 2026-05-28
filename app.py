@@ -290,15 +290,22 @@ def settings_dialog():
             box_size = st.number_input("Размер упаковки (шт/кг)", min_value=1, value=box_size, step=5, key="dialog_box_size")
         
         st.subheader("📅 Расписание поставок")
+
         schedule_type = st.radio(
             "Тип расписания",
-            options=["frequency", "days"],
-            format_func=lambda x: "📅 Периодичность (каждые N дней)" if x == "frequency" else "📅 Конкретные дни недели",
-            horizontal=True,
-            index=0 if st.session_state.settings.get('schedule_type') == 'frequency' else 1,
+            options=["frequency", "days", "ss_policy"],
+            format_func=lambda x: {
+                "frequency": "📅 Периодичность (каждые N дней)",
+                "days": "📅 Конкретные дни недели",
+                "ss_policy": "📊 (s, S)-стратегия (заказ при остатке ниже s)"
+            }[x],
+            horizontal=False,
+            index=0 if st.session_state.settings.get('schedule_type') == 'frequency' 
+                else 1 if st.session_state.settings.get('schedule_type') == 'days'
+                else 2,
             key="dialog_schedule"
         )
-        
+
         if schedule_type == "frequency":
             delivery_frequency = st.number_input(
                 "Периодичность поставок (дней)", 
@@ -309,7 +316,10 @@ def settings_dialog():
                 key="dialog_freq"
             )
             delivery_days = []
-        else:
+            reorder_point = None
+            max_stock = None
+
+        elif schedule_type == "days":
             delivery_frequency = 0
             day_map = {"Пн": 0, "Вт": 1, "Ср": 2, "Чт": 3, "Пт": 4, "Сб": 5, "Вс": 6}
             reverse_map = {0: "Пн", 1: "Вт", 2: "Ср", 3: "Чт", 4: "Пт", 5: "Сб", 6: "Вс"}
@@ -321,6 +331,32 @@ def settings_dialog():
                 key="dialog_days"
             )
             delivery_days = [day_map[d] for d in selected_days]
+            reorder_point = None
+            max_stock = None
+
+        else:  # ss_policy
+            delivery_frequency = 0
+            delivery_days = []
+            col_s, col_S = st.columns(2)
+            with col_s:
+                reorder_point = st.number_input(
+                    "📉 Точка заказа (s)",
+                    min_value=0.0,
+                    value=st.session_state.settings.get('reorder_point', 100.0),
+                    step=10.0,
+                    key="dialog_reorder_point",
+                    help="При остатке ниже этого значения — делаем заказ"
+                )
+            with col_S:
+                max_stock = st.number_input(
+                    "📈 Максимальный запас (S)",
+                    min_value=0.0,
+                    value=st.session_state.settings.get('max_stock', 300.0),
+                    step=50.0,
+                    key="dialog_max_stock",
+                    help="Заказываем до этого уровня"
+                )
+            st.caption(f"⚡ При остатке ниже {reorder_point:.0f} → заказ до {max_stock:.0f}")
         
         st.markdown("---")
         st.subheader("💰 Стоимость доставки")
@@ -381,9 +417,14 @@ def settings_dialog():
                 'use_custom_bounds': use_custom_bounds if distribution == "uniform" else False,
                 'demand_min': demand_min if distribution == "uniform" and use_custom_bounds else None,
                 'demand_max': demand_max if distribution == "uniform" and use_custom_bounds else None,
+                # Параметры доставки
                 'delivery_cost_type': delivery_cost_type,
                 'delivery_fixed_cost': delivery_fixed_cost,
-                'delivery_rate_cost': delivery_rate_cost
+                'delivery_rate_cost': delivery_rate_cost,
+                # Параметры (s, S)-стратегии
+                'reorder_point': reorder_point if schedule_type == "ss_policy" else None,
+                'max_stock': max_stock if schedule_type == "ss_policy" else None,
+                'min_stock': max_stock if schedule_type == "ss_policy" else st.session_state.settings.get('min_stock', 300)
             }
             st.rerun()
 

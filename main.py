@@ -110,7 +110,7 @@ def create_product(params: SimulationParams) -> Product:
             customer_strategy = FixedCustomerStrategy()
     
     # ========== 2. СТРАТЕГИЯ ПОСТАВОК ==========
-
+    
     # Обработка параметров доставки
     if params.delivery_cost_type == "none":
         cost_type = "fixed"
@@ -121,40 +121,51 @@ def create_product(params: SimulationParams) -> Product:
         fixed_cost = params.delivery_fixed_cost
         rate_cost = params.delivery_rate_cost
 
-    # Убедимся, что значения не None
-    if fixed_cost is None:
-        fixed_cost = 0.0
-    if rate_cost is None:
-        rate_cost = 0.0
-
-    if category_id == 1:  # strict (молоко)
-        if params.milk_delivery_frequency and params.milk_delivery_frequency > 0:
+    # ===== ВЫБОР СТРАТЕГИИ ПОСТАВОК =====
+    if params.schedule_type == "ss_policy":
+        # (s, S)-стратегия
+        from core.delivery import SSPolicyDelivery
+        delivery_strategy = SSPolicyDelivery(
+            reorder_point=params.reorder_point,
+            max_stock=params.max_stock,
+            cost_type=cost_type,
+            fixed_cost=fixed_cost,
+            rate_cost=rate_cost,
+            delivery_type=params.delivery_type or "unit",
+            box_size=params.box_size or 0
+        )
+    elif params.schedule_type == "frequency":
+        # Периодические поставки
+        if category_id == 1:  # strict (молоко)
+            freq = params.milk_delivery_frequency or params.delivery_frequency or 2
             delivery_strategy = PeriodicDelivery(
-                params.milk_delivery_frequency,
+                freq,
                 cost_type=cost_type,
                 fixed_cost=fixed_cost,
                 rate_cost=rate_cost
             )
         else:
-            delivery_days = params.milk_delivery_days if params.milk_delivery_days is not None else []
-            delivery_strategy = DaysOfWeekDelivery(
-                delivery_days,
+            freq = params.tomatoes_delivery_frequency or params.delivery_frequency or 2
+            delivery_strategy = PeriodicDelivery(
+                freq,
                 cost_type=cost_type,
                 fixed_cost=fixed_cost,
                 rate_cost=rate_cost
             )
-    else:  # gradual products
-        if params.tomatoes_delivery_frequency and params.tomatoes_delivery_frequency > 0:
-            delivery_strategy = PeriodicDelivery(
-                params.tomatoes_delivery_frequency,
+    else:  # days
+        # Поставки по дням недели
+        if category_id == 1:  # strict (молоко)
+            days = params.milk_delivery_days if params.milk_delivery_days is not None else params.delivery_days or [0, 3]
+            delivery_strategy = DaysOfWeekDelivery(
+                days,
                 cost_type=cost_type,
                 fixed_cost=fixed_cost,
                 rate_cost=rate_cost
             )
         else:
-            delivery_days = params.tomatoes_delivery_days if params.tomatoes_delivery_days is not None else []
+            days = params.tomatoes_delivery_days if params.tomatoes_delivery_days is not None else params.delivery_days or [0, 3]
             delivery_strategy = DaysOfWeekDelivery(
-                delivery_days,
+                days,
                 cost_type=cost_type,
                 fixed_cost=fixed_cost,
                 rate_cost=rate_cost

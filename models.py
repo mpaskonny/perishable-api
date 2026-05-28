@@ -22,15 +22,15 @@ class SimulationParams(BaseModel):
     weekday_factors: Optional[List[float]] = [0.8, 0.6, 0.9, 1.0, 1.3, 1.5, 1.1]
     fixed_demand: Optional[List[float]] = None
     
-    # Параметры равномерного спроса (ручной ввод)
+    # Параметры равномерного спроса
     demand_min: Optional[float] = None
     demand_max: Optional[float] = None
     
     # Параметры порчи
-    spoilage_type: Optional[str] = "linear"  # "linear", "power", "logistic"
+    spoilage_type: Optional[str] = "linear"
     shelf_life_days: int = 30
-    power_p: Optional[float] = 2.0           # для степенной порчи
-    logistic_k: Optional[float] = 15.0       # для логистической порчи
+    power_p: Optional[float] = 2.0
+    logistic_k: Optional[float] = 15.0
     
     # Параметры поставок (общие)
     delivery_type: Optional[str] = "unit"
@@ -59,9 +59,16 @@ class SimulationParams(BaseModel):
     real_demand_file: Optional[str] = None
 
     # Параметры доставки
-    delivery_cost_type: Optional[str] = "fixed"  # "fixed", "rate", "combined"
-    delivery_fixed_cost: float = 0.0             # фиксированная стоимость заказа
-    delivery_rate_cost: float = 0.0              # тариф за единицу (кг/шт)
+    delivery_cost_type: Optional[str] = "fixed"
+    delivery_fixed_cost: float = 0.0
+    delivery_rate_cost: float = 0.0
+
+    # Параметры расписания поставок
+    schedule_type: Optional[str] = "frequency"
+    delivery_frequency: Optional[int] = 2
+    delivery_days: Optional[List[int]] = [0, 3]
+    reorder_point: Optional[float] = None
+    max_stock: Optional[float] = None
 
 
 class DailyResult(BaseModel):
