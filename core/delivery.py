@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 import math
+from typing import List
 
 
 class DeliveryStrategy(ABC):
@@ -112,6 +113,46 @@ class SSPolicyDelivery(DeliveryStrategy):
     
     def calculate_delivery_cost(self, order_quantity: float) -> float:
         """Рассчитываем стоимость доставки"""
+        if self.cost_type == "fixed":
+            return self.fixed_cost
+        elif self.cost_type == "rate":
+            return self.rate_cost * order_quantity
+        elif self.cost_type == "combined":
+            return self.fixed_cost + self.rate_cost * order_quantity
+        else:
+            return 0.0
+
+class FixedQuantityDelivery(DeliveryStrategy):
+    """Стратегия с фиксированным объёмом поставки (R, Q)"""
+    
+    def __init__(self, frequency: int, fixed_quantity: float,
+                 cost_type: str = "fixed", fixed_cost: float = 0.0, 
+                 rate_cost: float = 0.0, delivery_days: List[int] = None):
+        """
+        frequency: периодичность поставок (дней)
+        fixed_quantity: фиксированный объём заказа
+        delivery_days: если указаны, то поставки по дням недели (игнорирует frequency)
+        """
+        self.frequency = frequency
+        self.fixed_quantity = fixed_quantity
+        self.cost_type = cost_type
+        self.fixed_cost = fixed_cost
+        self.rate_cost = rate_cost
+        self.delivery_days = delivery_days or []
+    
+    def should_deliver(self, day, current_date, total_stock, min_stock):
+        should = False
+        if self.delivery_days:
+            should = current_date.weekday() in self.delivery_days
+        else:
+            should = day % self.frequency == 0 and day > 0
+        return should
+    
+    def calculate_order(self, total_stock, min_stock, delivery_type, box_size):
+        # Всегда заказываем фиксированное количество
+        return self.fixed_quantity
+    
+    def calculate_delivery_cost(self, order_quantity: float) -> float:
         if self.cost_type == "fixed":
             return self.fixed_cost
         elif self.cost_type == "rate":

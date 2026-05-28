@@ -185,12 +185,19 @@ if 'settings' not in st.session_state:
         'weekday_factors': [0.8, 0.6, 0.9, 1.0, 1.3, 1.5, 1.1],
         'delivery_type': 'unit',
         'box_size': 20,
+        'fixed_quantity': None,
         'delivery_frequency': 2,
         'delivery_days': [0, 3],
         'schedule_type': 'frequency',
         'use_custom_bounds': False,
         'demand_min': None,
-        'demand_max': None
+        'demand_max': None,
+        'reorder_point': None,
+        'max_stock': None,
+        'delivery_cost_type': 'none',
+        'delivery_fixed_cost': 0.0,
+        'delivery_rate_cost': 0.0,
+        'min_stock': 300
     }
 
 
@@ -283,32 +290,64 @@ def settings_dialog():
     
     with col2:
         st.subheader("🚚 Параметры поставок")
+        
+        # Способ поставки (с добавлением фиксированного объёма)
         delivery_type = st.radio(
             "Способ поставки", 
-            options=["unit", "box"], 
-            format_func=lambda x: "📦 Штучно" if x == "unit" else "📦 Коробками/ящиками",
-            horizontal=True,
-            index=0 if st.session_state.settings.get('delivery_type') == 'unit' else 1,
+            options=["unit", "box", "fixed"],
+            format_func=lambda x: {
+                "unit": "📦 Штучно (заказ до целевого уровня)",
+                "box": "📦 Коробками/ящиками (кратно размеру упаковки)",
+                "fixed": "📦 Фиксированный объём (всегда одинаково)"
+            }[x],
+            horizontal=False,
+            index=0 if st.session_state.settings.get('delivery_type') == 'unit' 
+                  else 1 if st.session_state.settings.get('delivery_type') == 'box'
+                  else 2,
             key="dialog_delivery_type"
         )
         
+        fixed_quantity = None
         box_size = st.session_state.settings.get('box_size', 20)
+        
         if delivery_type == "box":
             box_size = st.number_input("Размер упаковки (шт/кг)", min_value=1, value=box_size, step=5, key="dialog_box_size")
+        elif delivery_type == "fixed":
+            fixed_quantity = st.number_input(
+                "Фиксированный объём поставки (шт/кг)", 
+                min_value=1, 
+                value=st.session_state.settings.get('fixed_quantity', 100),
+                step=10,
+                key="dialog_fixed_quantity"
+            )
         
         st.subheader("📅 Расписание поставок")
 
+        # (s, S)-стратегия недоступна при фиксированном объёме
+        ss_disabled = delivery_type == "fixed"
+
+        if ss_disabled:
+            st.info("⚡ При фиксированном объёме поставок (s, S)-стратегия недоступна")
+
+        # Доступные опции расписания
+        schedule_options = ["frequency", "days"]
+        if not ss_disabled:
+            schedule_options.append("ss_policy")
+
+        current_schedule = st.session_state.settings.get('schedule_type', 'frequency')
+        if current_schedule == "ss_policy" and ss_disabled:
+            current_schedule = "frequency"  # сброс на частоту, если (s,S) недоступен
+
         schedule_type = st.radio(
             "Тип расписания",
-            options=["frequency", "days", "ss_policy"],
+            options=schedule_options,
             format_func=lambda x: {
                 "frequency": "📅 Периодичность (каждые N дней)",
                 "days": "📅 Конкретные дни недели",
                 "ss_policy": "📊 (s, S)-стратегия (заказ при остатке ниже s)"
             }[x],
-            horizontal=False,
-            index=0 if st.session_state.settings.get('schedule_type') == 'frequency' 
-                else 1 if st.session_state.settings.get('schedule_type') == 'days'
+            index=0 if current_schedule == "frequency" 
+                else 1 if current_schedule == "days"
                 else 2,
             key="dialog_schedule"
         )
@@ -363,7 +402,12 @@ def settings_dialog():
                     key="dialog_max_stock",
                     help="Заказываем до этого уровня"
                 )
-            st.caption(f"⚡ При остатке ниже {reorder_point:.0f} → заказ до {max_stock:.0f}")
+            
+            if reorder_point is not None and max_stock is not None:
+                st.caption(f"⚡ При остатке ниже {reorder_point:.0f} → заказ до {max_stock:.0f}")
+
+        if delivery_type == "fixed":
+            st.caption("⚡ При фиксированном объёме поставка происходит по расписанию, независимо от остатка")
         
         st.markdown("---")
         st.subheader("💰 Стоимость доставки")
@@ -421,6 +465,7 @@ def settings_dialog():
                 'weekday_factors': weekday_factors,
                 'delivery_type': delivery_type,
                 'box_size': box_size,
+                'fixed_quantity': fixed_quantity,
                 'delivery_frequency': delivery_frequency,
                 'delivery_days': delivery_days,
                 'schedule_type': schedule_type,
@@ -523,7 +568,7 @@ with tab1:
     st.markdown("""
     <div class="steps-container">
         <p><span class="step-number">1</span> <span class="step-text">Перейдите на вкладку <b>«Симуляция»</b> сверху</span></p>
-        <p><span class="step-number">2</span> <span class="step-text">Выберите продукт из базы данных</span></p>
+        <p><span class="step-number">2</span> <span class-step-text">Выберите продукт из базы данных</span></p>
         <p><span class="step-number">3</span> <span class="step-text">Настройте параметры симуляции (количество дней, целевой запас, тип порчи)</span></p>
         <p><span class="step-number">4</span> <span class="step-text">При необходимости откройте <b>«Настройки»</b> (⚙️) для изменения законов спроса и поставок</span></p>
         <p><span class="step-number">5</span> <span class="step-text">Нажмите <b>«Запустить симуляцию»</b> и анализируйте результаты</span></p>

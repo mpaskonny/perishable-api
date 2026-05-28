@@ -158,21 +158,15 @@ class Product(ABC):
         total_stock = sum(b.quantity for b in self.batches)
         
         if self.delivery.should_deliver(day, current_date, total_stock, self.min_stock):
-            if total_stock < self.min_stock:
-                order = self.delivery.calculate_order(
-                    total_stock, 
-                    self.min_stock, 
-                    self.delivery_type,  
-                    self.box_size        
-                )
-                if order > 0:
-                    self._add_batch(current_date, order)
-                    self.total_purchase_cost += order * self.purchase_price
-                    
-                    delivery_cost = self.delivery.calculate_delivery_cost(order)
-                    self.total_delivery_cost += delivery_cost
-                    
-                    return order
+            # Для фиксированного объёма min_stock может быть 0
+            # Проверяем, нужно ли заказывать
+            order = self.delivery.calculate_order(total_stock, self.min_stock, self.delivery_type, self.box_size)
+            if order > 0:
+                self._add_batch(current_date, order)
+                self.total_purchase_cost += order * self.purchase_price
+                delivery_cost = self.delivery.calculate_delivery_cost(order)
+                self.total_delivery_cost += delivery_cost
+                return order
         return 0
     
     def _add_batch(self, current_date: datetime, quantity: float):

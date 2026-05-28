@@ -166,13 +166,22 @@ def show():
         else:
             days = st.slider("📅 Количество дней симуляции", 10, 365, 30, key="sim_days")
         
-        # Показываем поле только если не выбрана (s, S)-стратегия
+        # Показываем поле целевого запаса только для обычных стратегий
         settings = st.session_state.get('settings', {})
-        if settings.get('schedule_type') != 'ss_policy':
-            min_stock = st.number_input("📦 Целевой уровень запаса", min_value=0.0, value=300.0, step=50.0, key="sim_min_stock")
+        delivery_type = settings.get('delivery_type', 'unit')
+        schedule_type = settings.get('schedule_type', 'frequency')
+        fixed_qty = settings.get('fixed_quantity')
+        
+        if delivery_type == 'fixed' and fixed_qty is not None:
+            st.info(f"📦 Фиксированный объём поставки: {fixed_qty:.0f} кг/шт (поле целевого запаса не используется)")
+            min_stock = 0
+        elif schedule_type == 'ss_policy':
+            reorder_point = settings.get('reorder_point', 100)
+            max_stock = settings.get('max_stock', 300)
+            st.info(f"📊 (s, S)-стратегия: заказ при остатке ниже {reorder_point:.0f} до {max_stock:.0f}")
+            min_stock = max_stock
         else:
-            st.info(f"📊 (s, S)-стратегия: заказ при остатке ниже {settings.get('reorder_point', 100):.0f} до {settings.get('max_stock', 300):.0f}")
-            min_stock = settings.get('max_stock', 300)
+            min_stock = st.number_input("📦 Целевой уровень запаса", min_value=0.0, value=300.0, step=50.0, key="sim_min_stock")
 
     # ПРАВЫЙ КОНТЕЙНЕР: зависит от типа продукта
     with col_right:
@@ -260,6 +269,7 @@ def show():
                 # Параметры поставок
                 "delivery_type": settings.get('delivery_type', 'unit'),
                 "box_size": settings.get('box_size', 0),
+                "fixed_quantity": settings.get('fixed_quantity'),
                 "schedule_type": settings.get('schedule_type', 'frequency'),
                 "delivery_frequency": settings.get('delivery_frequency', 2),
                 "delivery_days": settings.get('delivery_days', []),

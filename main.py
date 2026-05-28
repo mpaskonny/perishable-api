@@ -119,7 +119,7 @@ def create_product(params: SimulationParams) -> Product:
             customer_strategy = FixedCustomerStrategy()
     
     # ========== 2. СТРАТЕГИЯ ПОСТАВОК ==========
-
+    
     # Обработка параметров доставки
     if params.delivery_cost_type == "none":
         cost_type = "fixed"
@@ -130,8 +130,28 @@ def create_product(params: SimulationParams) -> Product:
         fixed_cost = params.delivery_fixed_cost
         rate_cost = params.delivery_rate_cost
 
-    # ===== ВЫБОР СТРАТЕГИИ ПОСТАВОК =====
-    if params.schedule_type == "ss_policy":
+    # ===== ВЫБОР СПОСОБА ПОСТАВКИ И СТРАТЕГИИ =====
+    # Определяем расписание (периодичность или дни недели)
+    if params.schedule_type == "frequency":
+        delivery_frequency = params.delivery_frequency or 2
+        delivery_days = []
+    else:
+        delivery_frequency = 0
+        delivery_days = params.delivery_days or [0, 3]
+
+    # Выбираем стратегию в зависимости от способа поставки
+    if params.delivery_type == "fixed":
+        # Фиксированный объём поставки (R, Q)
+        from core.delivery import FixedQuantityDelivery
+        delivery_strategy = FixedQuantityDelivery(
+            frequency=delivery_frequency,
+            fixed_quantity=params.fixed_quantity,
+            cost_type=cost_type,
+            fixed_cost=fixed_cost,
+            rate_cost=rate_cost,
+            delivery_days=delivery_days if delivery_days else None
+        )
+    elif params.schedule_type == "ss_policy":
         # (s, S)-стратегия
         from core.delivery import SSPolicyDelivery
         delivery_strategy = SSPolicyDelivery(
@@ -143,10 +163,10 @@ def create_product(params: SimulationParams) -> Product:
             delivery_type=params.delivery_type or "unit",
             box_size=params.box_size or 0
         )
-    elif params.schedule_type == "frequency":
-        # Периодические поставки
+    else:
+        # Периодические поставки (до целевого уровня)
         if category_id == 1:  # strict (молоко)
-            freq = params.milk_delivery_frequency or params.delivery_frequency or 2
+            freq = params.milk_delivery_frequency or delivery_frequency or 2
             delivery_strategy = PeriodicDelivery(
                 freq,
                 cost_type=cost_type,
@@ -154,27 +174,9 @@ def create_product(params: SimulationParams) -> Product:
                 rate_cost=rate_cost
             )
         else:
-            freq = params.tomatoes_delivery_frequency or params.delivery_frequency or 2
+            freq = params.tomatoes_delivery_frequency or delivery_frequency or 2
             delivery_strategy = PeriodicDelivery(
                 freq,
-                cost_type=cost_type,
-                fixed_cost=fixed_cost,
-                rate_cost=rate_cost
-            )
-    else:  # days
-        # Поставки по дням недели
-        if category_id == 1:  # strict (молоко)
-            days = params.milk_delivery_days if params.milk_delivery_days is not None else params.delivery_days or [0, 3]
-            delivery_strategy = DaysOfWeekDelivery(
-                days,
-                cost_type=cost_type,
-                fixed_cost=fixed_cost,
-                rate_cost=rate_cost
-            )
-        else:
-            days = params.tomatoes_delivery_days if params.tomatoes_delivery_days is not None else params.delivery_days or [0, 3]
-            delivery_strategy = DaysOfWeekDelivery(
-                days,
                 cost_type=cost_type,
                 fixed_cost=fixed_cost,
                 rate_cost=rate_cost

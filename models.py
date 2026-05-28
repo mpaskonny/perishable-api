@@ -35,6 +35,7 @@ class SimulationParams(BaseModel):
     # Параметры поставок (общие)
     delivery_type: Optional[str] = "unit"
     box_size: Optional[int] = 0
+    fixed_quantity: Optional[float] = None
     
     # Параметры поставок для молока
     milk_delivery_frequency: Optional[int] = 2
