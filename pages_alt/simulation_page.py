@@ -73,7 +73,9 @@ def show():
         )
         
         use_real_demand = False
-        real_demand_file = None
+        real_demand_dates = None
+        real_demand_values = None
+        real_start_date = None
         
         if demand_source == "excel":
             from core.data_loader import DemandDataLoader
@@ -103,11 +105,6 @@ def show():
                 key="demand_file",
                 label_visibility="collapsed"
             )
-            
-            use_real_demand = False
-            real_demand_dates = None
-            real_demand_values = None
-            real_start_date = None
             
             if uploaded_file is not None:
                 try:
@@ -147,6 +144,8 @@ def show():
     st.markdown("---")
     
     # ========== ДВЕ КОЛОНКИ С КОНТЕЙНЕРАМИ ==========
+    col_left, col_right = st.columns(2)
+    
     # ЛЕВЫЙ КОНТЕЙНЕР: Параметры симуляции
     with col_left:
         st.subheader("⚙️ Параметры симуляции")
@@ -161,10 +160,33 @@ def show():
             start_date_dt = datetime.fromisoformat(real_start_date)
             end_date_dt = datetime.fromisoformat(real_start_date) + timedelta(days=len(real_demand_dates) - 1)
             days = len(real_demand_dates)
+            start_date = start_date_dt
             
             st.info(f"📅 Симуляция по загруженным данным: {start_date_dt.strftime('%d.%m.%Y')} — {end_date_dt.strftime('%d.%m.%Y')} (всего {days} дней)")
         else:
-            days = st.slider("📅 Количество дней симуляции", 10, 365, 30, key="sim_days")
+            # Выбор дат начала и окончания
+            col_date1, col_date2 = st.columns(2)
+            with col_date1:
+                start_date = st.date_input(
+                    "📅 Дата начала",
+                    value=datetime(2026, 2, 1),
+                    key="sim_start_date"
+                )
+            with col_date2:
+                end_date = st.date_input(
+                    "📅 Дата окончания",
+                    value=datetime(2026, 3, 3),
+                    key="sim_end_date"
+                )
+            
+            if start_date and end_date:
+                days = (end_date - start_date).days + 1
+                if days < 1:
+                    st.error("❌ Дата окончания должна быть позже даты начала")
+                    days = 1
+            else:
+                days = 30
+                start_date = datetime(2026, 2, 1)
         
         # Показываем поле целевого запаса только для обычных стратегий
         settings = st.session_state.get('settings', {})
@@ -252,7 +274,7 @@ def show():
                 "min_stock": float(min_stock),
                 "purchase_price": float(selected_product['purchase_price']),
                 "sale_price": float(selected_product['sale_price']),
-                "start_date": start_date.strftime('%Y-%m-%dT%H:%M:%S') if hasattr(start_date, 'strftime') else datetime(2026, 2, 1).isoformat(),
+                "start_date": datetime.combine(start_date, datetime.min.time()).isoformat(),
                 
                 # Параметры спроса
                 "distribution": distribution,
@@ -341,7 +363,6 @@ def show():
         display_simulation_results(st.session_state.simulation_results)
 
 
-# Функция display_simulation_results (без изменений)
 def display_simulation_results(results):
     """Отображает результаты симуляции"""
     if results is None:
@@ -517,7 +538,7 @@ def display_simulation_results(results):
                                          line=dict(color='#F39C12', width=2), fill='tozeroy'))
             fig_age.add_trace(go.Scatter(x=age_df['День'], y=age_df['15+ дней'], name='15+ дней',
                                          line=dict(color='#E74C3C', width=2), fill='tozeroy'))
-            fig_age.update_layout(template='plotly_white', xaxis_title="День", yaxis_title="Остаток (кг)")
+            fig_age.update_layout(template='plotly_white', xaxis_title="День", yaxis_title="Oстаток (кг)")
             st.plotly_chart(fig_age, use_container_width=True)
     
     # ========== СТАТИСТИКА ==========
@@ -547,19 +568,14 @@ def display_simulation_results(results):
     with st.expander("📋 Детальная история по дням"):
         df_display = df.copy()
         
-        # Удаляем лишние колонки
         columns_to_drop = ['fifo_sales', 'lifo_sales', 'total_sales', 'life_sales', 'spoilage_money']
         for col in columns_to_drop:
             if col in df_display.columns:
                 df_display = df_display.drop(columns=[col])
         
-        # Удаляем дублирующую колонку spoilage (если есть)
         if 'spoilage' in df_display.columns and 'spoilage_kg' in df_display.columns:
             df_display = df_display.drop(columns=['spoilage'])
         
-        # Даты уже в правильном формате из API, ничего не делаем
-        
-        # Переставляем колонки: Порча и Порча % от остатка после Продажи
         if 'spoilage_kg' in df_display.columns and 'Порча % от остатка' not in df_display.columns:
             if 'start_stock' in df_display.columns:
                 df_display['Порча % от остатка'] = df_display.apply(
@@ -567,18 +583,14 @@ def display_simulation_results(results):
                     if row['start_stock'] > 0 else 0, axis=1
                 )
         
-        # Определяем порядок колонок
         base_columns = ['day', 'date', 'demand', 'start_stock', 'sales']
         middle_columns = ['spoilage_kg', 'Порча % от остатка', 'order']
         remaining_columns = [col for col in df_display.columns if col not in base_columns + middle_columns + ['day', 'date']]
         
-        # Собираем колонки в нужном порядке
         ordered_columns = base_columns + middle_columns + remaining_columns
         df_display = df_display[[col for col in ordered_columns if col in df_display.columns]]
  
-        
         if product_category == "strict":
-            # Для молока
             milk_cols = ['stock_week1', 'stock_week2', 'stock_week3']
             for col in milk_cols:
                 if col in df_display.columns:
@@ -607,7 +619,6 @@ def display_simulation_results(results):
                 if col in df_display.columns:
                     column_names[col] = f'Партия {i}'
         else:
-            # Для помидоров (gradual)
             tomato_cols = ['fifo_percent', 'lifo_percent', 'utilization_cost', 
                         'batch_1_stock', 'batch_2_stock', 'batch_3_stock', 
                         'batch_4_stock', 'batch_5_stock', 'fifo_sales', 'lifo_sales']
