@@ -36,10 +36,30 @@ def show():
     selected_product = products_df[products_df['name'] == selected_product_name].iloc[0]
     product_category = selected_product['category']
     
-    # ========== СОХРАНЯЕМ БАЗОВЫЙ СПРОС В SESSION_STATE ==========
+    # ========== СОХРАНЯЕМ ПАРАМЕТРЫ В SESSION_STATE ==========
     st.session_state.current_base_demand = selected_product['base_demand']
+    st.session_state.current_product_category = product_category
     
     st.markdown("---")
+    
+    # ========== ОПРЕДЕЛЕНИЕ ДАТ СИМУЛЯЦИИ ==========
+    settings = st.session_state.get('settings', {})
+    use_real_demand = st.session_state.get('use_real_demand', False)
+    real_start_date = st.session_state.get('real_start_date')
+    real_demand_dates = st.session_state.get('real_demand_dates')
+    
+    if use_real_demand and real_start_date and real_demand_dates:
+        # Используем даты из загруженного Excel
+        start_date = datetime.fromisoformat(real_start_date)
+        end_date = start_date + timedelta(days=len(real_demand_dates) - 1)
+        days = len(real_demand_dates)
+    else:
+        # Используем даты из настроек (сохранённые пользователем)
+        sim_start_date = settings.get('sim_start_date', '2026-02-01')
+        sim_end_date = settings.get('sim_end_date', '2026-03-03')
+        start_date = datetime.strptime(sim_start_date, '%Y-%m-%d')
+        end_date = datetime.strptime(sim_end_date, '%Y-%m-%d')
+        days = (end_date - start_date).days + 1
     
     # ========== ДВА КОНТЕЙНЕРА РЯДОМ ==========
     col_left, col_right = st.columns(2)
@@ -60,201 +80,70 @@ def show():
         with row2_col2:
             st.metric("📊 Базовый спрос", f"{selected_product['base_demand']:.0f} ед/день")
     
-    # ===== ПРАВЫЙ КОНТЕЙНЕР: Источник данных спроса =====
+    # ===== ПРАВЫЙ КОНТЕЙНЕР: Краткая сводка настроек =====
     with col_right:
-        st.subheader("📊 Источник данных спроса")
+        st.subheader("⚙️ Текущие настройки")
         
-        demand_source = st.radio(
-            "Выберите источник",
-            options=["generated", "excel"],
-            format_func=lambda x: "🎲 Генерировать случайно" if x == "generated" else "📁 Загрузить из Excel (реальные данные)",
-            horizontal=True,
-            key="demand_source"
-        )
-        
-        use_real_demand = False
-        real_demand_dates = None
-        real_demand_values = None
-        real_start_date = None
-        
-        if demand_source == "excel":
-            from core.data_loader import DemandDataLoader
-            import io
-            
-            col_btn, _ = st.columns([1, 3])
-            with col_btn:
-                template_path = "demand_template.xlsx"
-                DemandDataLoader.create_template(template_path)
-                
-                with open(template_path, "rb") as f:
-                    st.download_button(
-                        label="📥 Шаблон",
-                        data=f,
-                        file_name="demand_template.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        key="download_template",
-                        help="Скачать шаблон Excel для заполнения"
-                    )
-            
-            st.caption("📝 Заполните шаблон и загрузите ниже:")
-            
-            uploaded_file = st.file_uploader(
-                "Загрузите файл",
-                type=['xlsx', 'xls'],
-                help="Файл должен содержать колонки: 'Дата' и 'Спрос'",
-                key="demand_file",
-                label_visibility="collapsed"
-            )
-            
-            if uploaded_file is not None:
-                try:
-                    df = pd.read_excel(uploaded_file)
-                    
-                    has_date = any(col in df.columns for col in ['Дата', 'Date', 'ДАТА', 'date'])
-                    has_demand = any(col in df.columns for col in ['Спрос', 'Demand', 'demand', 'СПРОС'])
-                    
-                    if has_date and has_demand:
-                        # Определяем колонку с датами
-                        date_col = None
-                        for col in ['Дата', 'Date', 'ДАТА', 'date']:
-                            if col in df.columns:
-                                date_col = col
-                                break
-                        
-                        # Преобразуем даты
-                        dates = pd.to_datetime(df[date_col])
-                        start_date_dt = dates.min()
-                        end_date_dt = dates.max()
-                        days_count = (end_date_dt - start_date_dt).days + 1
-                        
-                        # Сохраняем данные
-                        real_demand_dates = dates.dt.strftime('%Y-%m-%d').tolist()
-                        real_demand_values = df['Спрос'].tolist()
-                        real_start_date = start_date_dt.isoformat()
-                        
-                        use_real_demand = True
-                        
-                        st.success(f"✅ Загружено {len(df)} записей. Период: {start_date_dt.strftime('%d.%m.%Y')} — {end_date_dt.strftime('%d.%m.%Y')}")
-                        st.info(f"📅 Количество дней симуляции: {days_count}")
-                    else:
-                        st.error("❌ Файл должен содержать колонки 'Дата' и 'Спрос'")
-                except Exception as e:
-                    st.error(f"❌ Ошибка: {e}")
-    
-    st.markdown("---")
-    
-    # ========== ДВЕ КОЛОНКИ С КОНТЕЙНЕРАМИ ==========
-    col_left, col_right = st.columns(2)
-    
-    # ЛЕВЫЙ КОНТЕЙНЕР: Параметры симуляции
-    with col_left:
-        st.subheader("⚙️ Параметры симуляции")
-        
-        # Инициализация переменных
-        days = 30
-        min_stock = 300.0
-        start_date = datetime(2026, 2, 1)
-        
-        # Если используем реальные данные — используем сохранённые даты
-        if demand_source == "excel" and use_real_demand and real_start_date:
+        # Период
+        if use_real_demand and real_start_date and real_demand_dates:
             start_date_dt = datetime.fromisoformat(real_start_date)
-            end_date_dt = datetime.fromisoformat(real_start_date) + timedelta(days=len(real_demand_dates) - 1)
-            days = len(real_demand_dates)
-            start_date = start_date_dt
-            
-            st.info(f"📅 Симуляция по загруженным данным: {start_date_dt.strftime('%d.%m.%Y')} — {end_date_dt.strftime('%d.%m.%Y')} (всего {days} дней)")
+            end_date_dt = start_date_dt + timedelta(days=len(real_demand_dates) - 1)
+            days_count = len(real_demand_dates)
+            st.markdown(f"**📅 Период:** {start_date_dt.strftime('%d.%m.%Y')} — {end_date_dt.strftime('%d.%m.%Y')} ({days_count} дн)")
         else:
-            # Выбор дат начала и окончания
-            col_date1, col_date2 = st.columns(2)
-            with col_date1:
-                start_date = st.date_input(
-                    "📅 Дата начала",
-                    value=datetime(2026, 2, 1),
-                    key="sim_start_date"
-                )
-            with col_date2:
-                end_date = st.date_input(
-                    "📅 Дата окончания",
-                    value=datetime(2026, 3, 3),
-                    key="sim_end_date"
-                )
-            
-            if start_date and end_date:
-                days = (end_date - start_date).days + 1
-                if days < 1:
-                    st.error("❌ Дата окончания должна быть позже даты начала")
-                    days = 1
-            else:
-                days = 30
-                start_date = datetime(2026, 2, 1)
+            sim_start_date = settings.get('sim_start_date', '2026-02-01')
+            sim_end_date = settings.get('sim_end_date', '2026-03-03')
+            start_date_dt = datetime.strptime(sim_start_date, '%Y-%m-%d')
+            end_date_dt = datetime.strptime(sim_end_date, '%Y-%m-%d')
+            days_count = (end_date_dt - start_date_dt).days + 1
+            st.markdown(f"**📅 Период:** {start_date_dt.strftime('%d.%m.%Y')} — {end_date_dt.strftime('%d.%m.%Y')} ({days_count} дн)")
         
-        # Показываем поле целевого запаса только для обычных стратегий
-        settings = st.session_state.get('settings', {})
-        delivery_type = settings.get('delivery_type', 'unit')
-        schedule_type = settings.get('schedule_type', 'frequency')
-        fixed_qty = settings.get('fixed_quantity')
+        # Спрос
+        distribution = settings.get('distribution', 'uniform')
+        dist_text = "Равномерный" if distribution == "uniform" else "Нормальный"
+        st.markdown(f"**📊 Спрос:** {dist_text}")
         
-        if delivery_type == 'fixed' and fixed_qty is not None:
-            st.info(f"📦 Фиксированный объём поставки: {fixed_qty:.0f} кг/шт (поле целевого запаса не используется)")
-            min_stock = 0
-        elif schedule_type == 'ss_policy':
-            reorder_point = settings.get('reorder_point', 100)
-            max_stock = settings.get('max_stock', 300)
-            st.info(f"📊 (s, S)-стратегия: заказ при остатке ниже {reorder_point:.0f} до {max_stock:.0f}")
-            min_stock = max_stock
-        else:
-            min_stock = st.number_input("📦 Целевой уровень запаса", min_value=0.0, value=300.0, step=50.0, key="sim_min_stock")
-
-    # ПРАВЫЙ КОНТЕЙНЕР: зависит от типа продукта
-    with col_right:
+        # Коэффициенты дней недели (кратко)
+        factors = settings.get('weekday_factors', [0.8, 0.6, 0.9, 1.0, 1.3, 1.5, 1.1])
+        st.markdown(f"**📅 Коэфф.:** Пн{factors[0]:.1f} Вт{factors[1]:.1f} Ср{factors[2]:.1f} Чт{factors[3]:.1f} Пт{factors[4]:.1f} Сб{factors[5]:.1f} Вс{factors[6]:.1f}")
+        
+        # Порча или FIFO/LIFO
         if product_category == "strict":
-            st.subheader("👥 Распределение покупателей")
-            fifo_percent = st.slider("FIFO % (остальные LIFO)", 0, 100, 75, step=5, key="sim_fifo")
-            lifo_percent = 100 - fifo_percent
-            st.caption(f"📊 LIFO: {lifo_percent}%")
-            spoilage_type = "strict"
-            power_p = 2.0
-            logistic_k = 15.0
+            fifo = settings.get('fifo_percent', 75)
+            st.markdown(f"**👥 Покупатели:** FIFO {fifo}% / LIFO {100-fifo}%")
         else:
-            st.subheader("🕐 Параметры порчи")
-            
-            spoilage_type = st.selectbox(
-                "Тип порчи",
-                options=["linear", "power", "logistic"],
-                format_func=lambda x: {
-                    "linear": "📈 Линейная (равномерное старение)",
-                    "power": "📉 Степенная (ускорение к концу срока)",
-                    "logistic": "📊 Логистическая (S-образная)"
-                }[x],
-                key="sim_spoilage_type"
-            )
-            
-            power_p = 2.0
-            logistic_k = 15.0
-            
+            spoilage_type = settings.get('spoilage_type', 'linear')
+            spoilage_names = {"linear": "Линейная", "power": "Степенная", "logistic": "Логистическая"}
+            spoilage_text = spoilage_names.get(spoilage_type, "Линейная")
             if spoilage_type == "power":
-                power_p = st.slider(
-                    "Степень кривизны (p)", 
-                    min_value=1.5, 
-                    max_value=4.0, 
-                    value=2.0, 
-                    step=0.1,
-                    help="Чем больше p, тем резче рост порчи в конце срока",
-                    key="sim_power_p"
-                )
+                p = settings.get('power_p', 2.0)
+                spoilage_text += f" (p={p:.1f})"
             elif spoilage_type == "logistic":
-                logistic_k = st.slider(
-                    "Коэффициент крутизны (k)", 
-                    min_value=5.0, 
-                    max_value=30.0, 
-                    value=15.0, 
-                    step=1.0,
-                    help="Чем больше k, тем резче переход от свежего к испорченному",
-                    key="sim_log_k"
-                )
-            
-            fifo_percent = 100
-            lifo_percent = 0
+                k = settings.get('logistic_k', 15.0)
+                spoilage_text += f" (k={k:.0f})"
+            st.markdown(f"**🕐 Порча:** {spoilage_text}")
+        
+        # Стратегия поставок
+        strategy_type = settings.get('strategy_type', 'r_s')
+        strategy_names = {
+            "r_s": "(R, S) — до целевого уровня",
+            "r_q": "(R, Q) — фиксированный объём",
+            "s_s": "(s, S) — точка заказа",
+            "custom": "Пользовательская"
+        }
+        st.markdown(f"**🚚 Стратегия:** {strategy_names.get(strategy_type, '(R, S)')}")
+        
+        # Доставка
+        cost_type = settings.get('delivery_cost_type', 'none')
+        if cost_type == 'none':
+            st.markdown("**💰 Доставка:** ❌ Не учитывается")
+        elif cost_type == 'fixed':
+            st.markdown(f"**💰 Доставка:** Фикс {settings.get('delivery_fixed_cost', 500):.0f} руб")
+        elif cost_type == 'rate':
+            st.markdown(f"**💰 Доставка:** Тариф {settings.get('delivery_rate_cost', 5):.0f} руб/кг")
+        else:
+            st.markdown(f"**💰 Доставка:** Фикс {settings.get('delivery_fixed_cost', 200):.0f} + {settings.get('delivery_rate_cost', 3):.0f} руб/кг")
+    
     
     # ========== КНОПКА ЗАПУСКА ==========
     st.markdown("---")
@@ -263,76 +152,107 @@ def show():
         with st.spinner("Симуляция выполняется..."):
             settings = st.session_state.get('settings', {})
             
-            # Получаем параметры спроса из настроек
+            # Получаем параметры
             distribution = settings.get('distribution', 'uniform')
             demand_min = settings.get('demand_min')
             demand_max = settings.get('demand_max')
+            spoilage_type = settings.get('spoilage_type', 'linear')
+            power_p = settings.get('power_p', 2.0)
+            logistic_k = settings.get('logistic_k', 15.0)
+            fifo_percent = settings.get('fifo_percent', 75)
+            delivery_type = settings.get('delivery_type', 'unit')
+            box_size = settings.get('box_size', 0)
+            fixed_quantity = settings.get('fixed_quantity')
+            schedule_type = settings.get('schedule_type', 'frequency')
+            delivery_frequency = settings.get('delivery_frequency', 2)
+            delivery_days = settings.get('delivery_days', [])
+            reorder_point = settings.get('reorder_point')
+            max_stock = settings.get('max_stock')
+            min_stock_setting = settings.get('min_stock', 300)
+            delivery_cost_type = settings.get('delivery_cost_type', 'none')
+            delivery_fixed_cost = settings.get('delivery_fixed_cost', 0.0)
+            delivery_rate_cost = settings.get('delivery_rate_cost', 0.0)
+            strategy_type = settings.get('strategy_type', 'r_s')
+            
+            # Определяем даты симуляции
+            use_real_demand = st.session_state.get('use_real_demand', False)
+            real_demand_dates = st.session_state.get('real_demand_dates')
+            real_demand_values = st.session_state.get('real_demand_values')
+            real_start_date = st.session_state.get('real_start_date')
+            
+            if use_real_demand and real_start_date and real_demand_dates:
+                start_date = datetime.fromisoformat(real_start_date)
+                days = len(real_demand_dates)
+            else:
+                start_date = datetime(2026, 2, 1)
+                days = 30
+            
+            # Определяем параметры в зависимости от стратегии
+            if strategy_type == "r_s":
+                min_stock = min_stock_setting
+                final_fixed_quantity = None
+                final_reorder_point = None
+                final_max_stock = None
+                final_delivery_type = delivery_type
+                final_box_size = box_size
+            elif strategy_type == "r_q":
+                min_stock = 0
+                final_fixed_quantity = fixed_quantity
+                final_reorder_point = None
+                final_max_stock = None
+                final_delivery_type = "fixed"
+                final_box_size = 0
+            elif strategy_type == "s_s":
+                min_stock = max_stock if max_stock else 300
+                final_fixed_quantity = None
+                final_reorder_point = reorder_point
+                final_max_stock = max_stock
+                final_delivery_type = delivery_type
+                final_box_size = box_size
+            else:  # custom
+                min_stock = min_stock_setting
+                final_fixed_quantity = fixed_quantity
+                final_reorder_point = reorder_point
+                final_max_stock = max_stock
+                final_delivery_type = delivery_type
+                final_box_size = box_size
             
             params = {
-                # Базовые параметры
                 "days": days,
                 "min_stock": float(min_stock),
                 "purchase_price": float(selected_product['purchase_price']),
                 "sale_price": float(selected_product['sale_price']),
-                "start_date": datetime.combine(start_date, datetime.min.time()).isoformat(),
-                
-                # Параметры спроса
                 "distribution": distribution,
                 "weekday_factors": settings.get('weekday_factors', [0.8, 0.6, 0.9, 1.0, 1.3, 1.5, 1.1]),
-                "demand_min": demand_min,
-                "demand_max": demand_max,
-                
-                # Параметры порчи
                 "spoilage_type": spoilage_type,
                 "shelf_life_days": int(selected_product['shelf_life_days']),
                 "power_p": power_p if spoilage_type == "power" else None,
                 "logistic_k": logistic_k if spoilage_type == "logistic" else None,
-                
-                # Параметры поставок
-                "delivery_type": settings.get('delivery_type', 'unit'),
-                "box_size": settings.get('box_size', 0),
-                "fixed_quantity": settings.get('fixed_quantity'),
-                "schedule_type": settings.get('schedule_type', 'frequency'),
-                "delivery_frequency": settings.get('delivery_frequency', 2),
-                "delivery_days": settings.get('delivery_days', []),
-                "reorder_point": settings.get('reorder_point'),
-                "max_stock": settings.get('max_stock'),
-                
-                # Параметры доставки
-                "delivery_cost_type": settings.get('delivery_cost_type', 'fixed'),
-                "delivery_fixed_cost": settings.get('delivery_fixed_cost', 0.0),
-                "delivery_rate_cost": settings.get('delivery_rate_cost', 0.0),
-                
-                # Прочее
+                "demand_min": demand_min,
+                "demand_max": demand_max,
+                "delivery_type": final_delivery_type,
+                "box_size": final_box_size,
+                "fixed_quantity": final_fixed_quantity,
+                "schedule_type": schedule_type if strategy_type != "s_s" else None,
+                "delivery_frequency": delivery_frequency if schedule_type == "frequency" else 0,
+                "delivery_days": delivery_days if schedule_type == "days" else [],
+                "reorder_point": final_reorder_point,
+                "max_stock": final_max_stock,
+                "delivery_cost_type": delivery_cost_type,
+                "delivery_fixed_cost": delivery_fixed_cost,
+                "delivery_rate_cost": delivery_rate_cost,
                 "product_type": "milk" if product_category == "strict" else "tomatoes",
+                "start_date": start_date.isoformat(),
                 "product_name": selected_product_name,
                 "fifo_percent": float(fifo_percent) if product_category == "strict" else None,
-                "lifo_percent": float(lifo_percent) if product_category == "strict" else None,
+                "lifo_percent": float(100 - fifo_percent) if product_category == "strict" else None,
                 "utilization_price": 5.0 if product_category == "strict" else 0.0,
                 "sigma_buyer": 1.51 if product_category == "strict" else None,
-                
-                # Поля для импорта данных (реальные даты)
                 "use_real_demand": use_real_demand,
                 "real_demand_dates": real_demand_dates if use_real_demand else None,
                 "real_demand_values": real_demand_values if use_real_demand else None,
                 "real_start_date": real_start_date if use_real_demand else None,
             }
-            
-            schedule_type = settings.get('schedule_type', 'frequency')
-            if product_category == "strict":
-                if schedule_type == 'frequency':
-                    params["milk_delivery_frequency"] = settings.get('delivery_frequency', 2)
-                    params["milk_delivery_days"] = []
-                else:
-                    params["milk_delivery_frequency"] = 0
-                    params["milk_delivery_days"] = settings.get('delivery_days', [0, 3])
-            else:
-                if schedule_type == 'frequency':
-                    params["tomatoes_delivery_frequency"] = settings.get('delivery_frequency', 2)
-                    params["tomatoes_delivery_days"] = []
-                else:
-                    params["tomatoes_delivery_frequency"] = 0
-                    params["tomatoes_delivery_days"] = settings.get('delivery_days', [0, 3])
             
             try:
                 response = requests.post(f"{API_URL}/simulate", json=params, timeout=30)
@@ -538,7 +458,7 @@ def display_simulation_results(results):
                                          line=dict(color='#F39C12', width=2), fill='tozeroy'))
             fig_age.add_trace(go.Scatter(x=age_df['День'], y=age_df['15+ дней'], name='15+ дней',
                                          line=dict(color='#E74C3C', width=2), fill='tozeroy'))
-            fig_age.update_layout(template='plotly_white', xaxis_title="День", yaxis_title="Oстаток (кг)")
+            fig_age.update_layout(template='plotly_white', xaxis_title="День", yaxis_title="Остаток (кг)")
             st.plotly_chart(fig_age, use_container_width=True)
     
     # ========== СТАТИСТИКА ==========

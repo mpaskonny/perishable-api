@@ -1,6 +1,8 @@
 import streamlit as st
 import glob
 import os
+import pandas as pd
+from datetime import datetime, timedelta
 
 st.set_page_config(
     page_title="Симулятор продуктов",
@@ -183,22 +185,37 @@ if 'settings' not in st.session_state:
     st.session_state.settings = {
         'distribution': 'uniform',
         'weekday_factors': [0.8, 0.6, 0.9, 1.0, 1.3, 1.5, 1.1],
+        'spoilage_type': 'linear',
+        'power_p': 2.0,
+        'logistic_k': 15.0,
+        'fifo_percent': 75,
+        'use_custom_bounds': False,
+        'demand_min': None,
+        'demand_max': None,
+        'delivery_cost_type': 'none',
+        'delivery_fixed_cost': 0.0,
+        'delivery_rate_cost': 0.0,
+        'strategy_type': 'r_s',
         'delivery_type': 'unit',
         'box_size': 20,
         'fixed_quantity': None,
         'delivery_frequency': 2,
         'delivery_days': [0, 3],
         'schedule_type': 'frequency',
-        'use_custom_bounds': False,
-        'demand_min': None,
-        'demand_max': None,
         'reorder_point': None,
         'max_stock': None,
-        'delivery_cost_type': 'none',
-        'delivery_fixed_cost': 0.0,
-        'delivery_rate_cost': 0.0,
         'min_stock': 300
     }
+
+# Инициализация для реальных данных
+if 'use_real_demand' not in st.session_state:
+    st.session_state.use_real_demand = False
+if 'real_demand_dates' not in st.session_state:
+    st.session_state.real_demand_dates = None
+if 'real_demand_values' not in st.session_state:
+    st.session_state.real_demand_values = None
+if 'real_start_date' not in st.session_state:
+    st.session_state.real_start_date = None
 
 
 # ========== МОДАЛЬНОЕ ОКНО НАСТРОЕК ==========
@@ -210,65 +227,130 @@ def settings_dialog():
     if 'calculated_factors' in st.session_state:
         st.session_state.calculated_factors = None
     
-    # Получаем базовый спрос из session_state (устанавливается в simulation_page)
+    # Получаем базовый спрос и категорию продукта из session_state
     base_demand = st.session_state.get('current_base_demand', 100)
+    product_category = st.session_state.get('current_product_category', 'gradual')
     
-    col1, col2 = st.columns(2)
+    # Создаём вкладки внутри модального окна
+    tab1, tab2, tab3 = st.tabs(["📊 Общие настройки", "🎮 Стратегия поставок", "💰 Доставка"])
     
-    with col1:
-        st.subheader("📊 Параметры спроса")
+    # ========== ВКЛАДКА 1: ОБЩИЕ НАСТРОЙКИ ==========
+    with tab1:
+        col1, col2 = st.columns(2)
         
-        distribution = st.selectbox(
-            "Закон распределения",
-            options=["uniform", "normal"],
-            format_func=lambda x: "📊 Равномерный" if x == "uniform" else "📈 Нормальный",
-            index=0 if st.session_state.settings.get('distribution') == 'uniform' else 1,
-            key="dialog_distribution"
-        )
-        
-        if distribution == "uniform":
-            use_custom_bounds = st.checkbox(
-                "🎯 Задать границы спроса вручную",
-                value=st.session_state.settings.get('use_custom_bounds', False),
-                key="dialog_use_custom_bounds"
+        with col1:
+            st.subheader("📊 Параметры спроса")
+            
+            distribution = st.selectbox(
+                "Закон распределения",
+                options=["uniform", "normal"],
+                format_func=lambda x: "📊 Равномерный" if x == "uniform" else "📈 Нормальный",
+                index=0 if st.session_state.settings.get('distribution') == 'uniform' else 1,
+                key="dialog_distribution"
             )
             
-            if use_custom_bounds:
-                col_min, col_max = st.columns(2)
-                with col_min:
-                    demand_min = st.number_input(
-                        "Мин. спрос (ед/день)",
-                        min_value=0.0,
-                        value=st.session_state.settings.get('demand_min', base_demand * 0.5),
-                        step=5.0,
-                        key="dialog_demand_min"
-                    )
-                with col_max:
-                    demand_max = st.number_input(
-                        "Макс. спрос (ед/день)",
-                        min_value=0.0,
-                        value=st.session_state.settings.get('demand_max', base_demand * 1.5),
-                        step=5.0,
-                        key="dialog_demand_max"
-                    )
+            if distribution == "uniform":
+                use_custom_bounds = st.checkbox(
+                    "🎯 Задать границы спроса вручную",
+                    value=st.session_state.settings.get('use_custom_bounds', False),
+                    key="dialog_use_custom_bounds"
+                )
                 
-                if demand_min is not None and demand_max is not None:
-                    if demand_min >= demand_max:
-                        st.error("❌ Мин. спрос должен быть меньше макс. спроса")
+                if use_custom_bounds:
+                    col_min, col_max = st.columns(2)
+                    with col_min:
+                        demand_min = st.number_input(
+                            "Мин. спрос (ед/день)",
+                            min_value=0.0,
+                            value=st.session_state.settings.get('demand_min', base_demand * 0.5),
+                            step=5.0,
+                            key="dialog_demand_min"
+                        )
+                    with col_max:
+                        demand_max = st.number_input(
+                            "Макс. спрос (ед/день)",
+                            min_value=0.0,
+                            value=st.session_state.settings.get('demand_max', base_demand * 1.5),
+                            step=5.0,
+                            key="dialog_demand_max"
+                        )
                     
-                    calculated_mean = (demand_min + demand_max) / 2
-                    if abs(calculated_mean - base_demand) > 0.1:
-                        st.warning(f"⚠️ Среднее значение ({calculated_mean:.1f}) отличается от базового спроса в БД ({base_demand:.1f})")
-                        st.caption("Вы можете продолжить или скорректировать границы.")
-                
-                st.caption(f"📊 Базовый спрос из БД: {base_demand:.0f} ед/день")
+                    if demand_min is not None and demand_max is not None:
+                        if demand_min >= demand_max:
+                            st.error("❌ Мин. спрос должен быть меньше макс. спроса")
+                        
+                        calculated_mean = (demand_min + demand_max) / 2
+                        if abs(calculated_mean - base_demand) > 0.1:
+                            st.warning(f"⚠️ Среднее значение ({calculated_mean:.1f}) отличается от базового спроса в БД ({base_demand:.1f})")
+                            st.caption("Вы можете продолжить или скорректировать границы.")
+                    
+                    st.caption(f"📊 Базовый спрос из БД: {base_demand:.0f} ед/день")
+                else:
+                    demand_min = None
+                    demand_max = None
+                    st.caption(f"📊 Автоматически: от {base_demand * 0.5:.0f} до {base_demand * 1.5:.0f} ед/день")
             else:
                 demand_min = None
                 demand_max = None
-                st.caption(f"📊 Автоматически: от {base_demand * 0.5:.0f} до {base_demand * 1.5:.0f} ед/день")
-        else:
-            demand_min = None
-            demand_max = None
+        
+        with col2:
+            # Условное отображение: для строгих товаров - FIFO/LIFO, для gradual - параметры порчи
+            if product_category == "strict":
+                st.subheader("👥 Распределение покупателей (для молока)")
+                fifo_percent = st.slider(
+                    "FIFO % (остальные LIFO)",
+                    min_value=0,
+                    max_value=100,
+                    value=st.session_state.settings.get('fifo_percent', 75),
+                    step=5,
+                    key="dialog_fifo_percent"
+                )
+                # Сохраняем значения порчи (не используются, но нужны для сохранения)
+                spoilage_type = st.session_state.settings.get('spoilage_type', 'linear')
+                power_p = st.session_state.settings.get('power_p', 2.0)
+                logistic_k = st.session_state.settings.get('logistic_k', 15.0)
+            else:
+                st.subheader("🕐 Параметры порчи")
+                spoilage_type = st.selectbox(
+                    "Тип порчи",
+                    options=["linear", "power", "logistic"],
+                    format_func=lambda x: {
+                        "linear": "📈 Линейная (равномерное старение)",
+                        "power": "📉 Степенная (ускорение к концу срока)",
+                        "logistic": "📊 Логистическая (S-образная)"
+                    }[x],
+                    index=0 if st.session_state.settings.get('spoilage_type') == 'linear' 
+                          else 1 if st.session_state.settings.get('spoilage_type') == 'power'
+                          else 2,
+                    key="dialog_spoilage_type"
+                )
+                
+                power_p = 2.0
+                logistic_k = 15.0
+                
+                if spoilage_type == "power":
+                    power_p = st.slider(
+                        "Степень кривизны (p)", 
+                        min_value=1.5, 
+                        max_value=4.0, 
+                        value=st.session_state.settings.get('power_p', 2.0),
+                        step=0.1,
+                        help="Чем больше p, тем резче рост порчи в конце срока",
+                        key="dialog_power_p"
+                    )
+                elif spoilage_type == "logistic":
+                    logistic_k = st.slider(
+                        "Коэффициент крутизны (k)", 
+                        min_value=5.0, 
+                        max_value=30.0, 
+                        value=st.session_state.settings.get('logistic_k', 15.0),
+                        step=1.0,
+                        help="Чем больше k, тем резче переход от свежего к испорченному",
+                        key="dialog_logistic_k"
+                    )
+                
+                # Сохраняем FIFO (не используется)
+                fifo_percent = st.session_state.settings.get('fifo_percent', 75)
         
         # Коэффициенты дней недели
         st.markdown("---")
@@ -286,130 +368,295 @@ def settings_dialog():
         with cols[6]: sun = st.number_input("Вс", value=factors[6], step=0.1, format="%.1f", key="dialog_sun")
         
         weekday_factors = [mon, tue, wed, thu, fri, sat, sun]
+
+                # ========== БЛОК ВЫБОРА ДАТ ==========
+        st.markdown("---")
+        st.subheader("📅 Период симуляции")
         
-    
-    with col2:
-        st.subheader("🚚 Параметры поставок")
+        # Получаем текущие даты из session_state или значения по умолчанию
+        sim_start_date = st.session_state.settings.get('sim_start_date', '2026-02-01')
+        sim_end_date = st.session_state.settings.get('sim_end_date', '2026-03-03')
         
-        # Способ поставки (с добавлением фиксированного объёма)
-        delivery_type = st.radio(
-            "Способ поставки", 
-            options=["unit", "box", "fixed"],
-            format_func=lambda x: {
-                "unit": "📦 Штучно (заказ до целевого уровня)",
-                "box": "📦 Коробками/ящиками (кратно размеру упаковки)",
-                "fixed": "📦 Фиксированный объём (всегда одинаково)"
-            }[x],
-            horizontal=False,
-            index=0 if st.session_state.settings.get('delivery_type') == 'unit' 
-                  else 1 if st.session_state.settings.get('delivery_type') == 'box'
-                  else 2,
-            key="dialog_delivery_type"
+        col_date1, col_date2 = st.columns(2)
+        with col_date1:
+            start_date = st.date_input(
+                "Дата начала",
+                value=datetime.strptime(sim_start_date, '%Y-%m-%d').date(),
+                key="dialog_start_date"
+            )
+        with col_date2:
+            end_date = st.date_input(
+                "Дата окончания",
+                value=datetime.strptime(sim_end_date, '%Y-%m-%d').date(),
+                key="dialog_end_date"
+            )
+        
+        if start_date and end_date:
+            days_count = (end_date - start_date).days + 1
+            if days_count < 1:
+                st.error("❌ Дата окончания должна быть позже даты начала")
+            else:
+                st.caption(f"📊 Длительность симуляции: {days_count} дней")
+        
+        # Источник данных спроса
+        st.markdown("---")
+        st.subheader("📁 Источник данных спроса")
+        
+        demand_source = st.radio(
+            "Выберите источник",
+            options=["generated", "excel"],
+            format_func=lambda x: "🎲 Генерировать случайно" if x == "generated" else "📁 Загрузить из Excel (реальные данные)",
+            horizontal=True,
+            key="dialog_demand_source"
         )
         
-        fixed_quantity = None
-        box_size = st.session_state.settings.get('box_size', 20)
-        
-        if delivery_type == "box":
-            box_size = st.number_input("Размер упаковки (шт/кг)", min_value=1, value=box_size, step=5, key="dialog_box_size")
-        elif delivery_type == "fixed":
-            fixed_quantity = st.number_input(
-                "Фиксированный объём поставки (шт/кг)", 
-                min_value=1, 
-                value=st.session_state.settings.get('fixed_quantity', 100),
-                step=10,
-                key="dialog_fixed_quantity"
-            )
-        
-        st.subheader("📅 Расписание поставок")
-
-        # (s, S)-стратегия недоступна при фиксированном объёме
-        ss_disabled = delivery_type == "fixed"
-
-        if ss_disabled:
-            st.info("⚡ При фиксированном объёме поставок (s, S)-стратегия недоступна")
-
-        # Доступные опции расписания
-        schedule_options = ["frequency", "days"]
-        if not ss_disabled:
-            schedule_options.append("ss_policy")
-
-        current_schedule = st.session_state.settings.get('schedule_type', 'frequency')
-        if current_schedule == "ss_policy" and ss_disabled:
-            current_schedule = "frequency"  # сброс на частоту, если (s,S) недоступен
-
-        schedule_type = st.radio(
-            "Тип расписания",
-            options=schedule_options,
-            format_func=lambda x: {
-                "frequency": "📅 Периодичность (каждые N дней)",
-                "days": "📅 Конкретные дни недели",
-                "ss_policy": "📊 (s, S)-стратегия (заказ при остатке ниже s)"
-            }[x],
-            index=0 if current_schedule == "frequency" 
-                else 1 if current_schedule == "days"
-                else 2,
-            key="dialog_schedule"
-        )
-
-        if schedule_type == "frequency":
-            delivery_frequency = st.number_input(
-                "Периодичность поставок (дней)", 
-                min_value=1, 
-                max_value=365, 
-                value=st.session_state.settings.get('delivery_frequency', 2),
-                step=1,
-                key="dialog_freq"
-            )
-            delivery_days = []
-            reorder_point = None
-            max_stock = None
-
-        elif schedule_type == "days":
-            delivery_frequency = 0
-            day_map = {"Пн": 0, "Вт": 1, "Ср": 2, "Чт": 3, "Пт": 4, "Сб": 5, "Вс": 6}
-            reverse_map = {0: "Пн", 1: "Вт", 2: "Ср", 3: "Чт", 4: "Пт", 5: "Сб", 6: "Вс"}
-            current_days = [reverse_map[d] for d in st.session_state.settings.get('delivery_days', [0, 3])]
-            selected_days = st.multiselect(
-                "Дни поставок", 
-                options=["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"], 
-                default=current_days,
-                key="dialog_days"
-            )
-            delivery_days = [day_map[d] for d in selected_days]
-            reorder_point = None
-            max_stock = None
-
-        else:  # ss_policy
-            delivery_frequency = 0
-            delivery_days = []
-            col_s, col_S = st.columns(2)
-            with col_s:
-                reorder_point = st.number_input(
-                    "📉 Точка заказа (s)",
-                    min_value=0.0,
-                    value=st.session_state.settings.get('reorder_point', 100.0),
-                    step=10.0,
-                    key="dialog_reorder_point",
-                    help="При остатке ниже этого значения — делаем заказ"
-                )
-            with col_S:
-                max_stock = st.number_input(
-                    "📈 Максимальный запас (S)",
-                    min_value=0.0,
-                    value=st.session_state.settings.get('max_stock', 300.0),
-                    step=50.0,
-                    key="dialog_max_stock",
-                    help="Заказываем до этого уровня"
-                )
+        if demand_source == "excel":
+            from core.data_loader import DemandDataLoader
             
-            if reorder_point is not None and max_stock is not None:
-                st.caption(f"⚡ При остатке ниже {reorder_point:.0f} → заказ до {max_stock:.0f}")
-
-        if delivery_type == "fixed":
-            st.caption("⚡ При фиксированном объёме поставка происходит по расписанию, независимо от остатка")
+            col_btn, _ = st.columns([1, 3])
+            with col_btn:
+                template_path = "demand_template.xlsx"
+                DemandDataLoader.create_template(template_path)
+                
+                with open(template_path, "rb") as f:
+                    st.download_button(
+                        label="📥 Шаблон",
+                        data=f,
+                        file_name="demand_template.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        key="dialog_download_template",
+                        help="Скачать шаблон Excel для заполнения"
+                    )
+            
+            st.caption("📝 Заполните шаблон и загрузите ниже:")
+            
+            uploaded_file = st.file_uploader(
+                "Загрузите файл",
+                type=['xlsx', 'xls'],
+                help="Файл должен содержать колонки: 'Дата' и 'Спрос'",
+                key="dialog_demand_file",
+                label_visibility="collapsed"
+            )
+            
+            if uploaded_file is not None:
+                try:
+                    df = pd.read_excel(uploaded_file)
+                    
+                    has_date = any(col in df.columns for col in ['Дата', 'Date', 'ДАТА', 'date'])
+                    has_demand = any(col in df.columns for col in ['Спрос', 'Demand', 'demand', 'СПРОС'])
+                    
+                    if has_date and has_demand:
+                        date_col = None
+                        for col in ['Дата', 'Date', 'ДАТА', 'date']:
+                            if col in df.columns:
+                                date_col = col
+                                break
+                        
+                        dates = pd.to_datetime(df[date_col])
+                        start_date_dt = dates.min()
+                        end_date_dt = dates.max()
+                        days_count = (end_date_dt - start_date_dt).days + 1
+                        
+                        st.session_state.real_demand_dates = dates.dt.strftime('%Y-%m-%d').tolist()
+                        st.session_state.real_demand_values = df['Спрос'].tolist()
+                        st.session_state.real_start_date = start_date_dt.isoformat()
+                        st.session_state.use_real_demand = True
+                        
+                        st.success(f"✅ Загружено {len(df)} записей. Период: {start_date_dt.strftime('%d.%m.%Y')} — {end_date_dt.strftime('%d.%m.%Y')}")
+                        st.info(f"📅 Количество дней симуляции: {days_count}")
+                    else:
+                        st.error("❌ Файл должен содержать колонки 'Дата' и 'Спрос'")
+                except Exception as e:
+                    st.error(f"❌ Ошибка: {e}")
+        else:
+            st.session_state.use_real_demand = False
+            st.session_state.real_demand_dates = None
+            st.session_state.real_demand_values = None
+            st.session_state.real_start_date = None
+    
+    # ========== ВКЛАДКА 2: СТРАТЕГИЯ ПОСТАВОК ==========
+    with tab2:
+        st.markdown("### 🎯 Выберите стратегию")
+        
+        strategy_type = st.radio(
+            "Стратегия",
+            options=["r_s", "r_q", "s_s", "custom"],
+            format_func=lambda x: {
+                "r_s": "📅 (R, S) — Периодическая до целевого уровня",
+                "r_q": "📦 (R, Q) — Фиксированный объём по расписанию",
+                "s_s": "📊 (s, S) — Двухуровневая (точка заказа)",
+                "custom": "🔧 Пользовательская (конструктор)"
+            }[x],
+            key="dialog_strategy_type",
+            label_visibility="collapsed"
+        )
         
         st.markdown("---")
+        st.markdown("### 📋 Параметры стратегии")
+        
+        # ===== (R, S) =====
+        if strategy_type == "r_s":
+            delivery_type = st.radio(
+                "Способ поставки",
+                options=["unit", "box"],
+                format_func=lambda x: "📦 Штучно" if x == "unit" else "📦 Коробками/ящиками",
+                horizontal=True,
+                key="dialog_r_s_delivery_type"
+            )
+            
+            box_size = 0
+            if delivery_type == "box":
+                box_size = st.number_input("Размер упаковки (шт/кг)", min_value=1, value=20, step=5, key="dialog_r_s_box_size")
+            
+            st.subheader("📅 Расписание поставок")
+            schedule_type = st.radio(
+                "Тип расписания",
+                options=["frequency", "days"],
+                format_func=lambda x: "Периодичность (каждые N дней)" if x == "frequency" else "Конкретные дни недели",
+                horizontal=True,
+                key="dialog_r_s_schedule"
+            )
+            
+            if schedule_type == "frequency":
+                delivery_frequency = st.number_input("Периодичность (дней)", min_value=1, value=2, step=1, key="dialog_r_s_freq")
+                delivery_days = []
+            else:
+                delivery_frequency = 0
+                day_map = {"Пн": 0, "Вт": 1, "Ср": 2, "Чт": 3, "Пт": 4, "Сб": 5, "Вс": 6}
+                selected_days = st.multiselect("Дни поставок", ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"], default=["Пн","Чт"], key="dialog_r_s_days")
+                delivery_days = [day_map[d] for d in selected_days]
+            
+            min_stock = st.number_input("📦 Целевой уровень запаса", min_value=0.0, value=300.0, step=50.0, key="dialog_r_s_min_stock")
+            
+            fixed_quantity = None
+            reorder_point = None
+            max_stock = None
+        
+        # ===== (R, Q) =====
+        elif strategy_type == "r_q":
+            fixed_quantity = st.number_input("📦 Фиксированный объём поставки (шт/кг)", min_value=1, value=100, step=10, key="dialog_r_q_fixed")
+            
+            st.subheader("📅 Расписание поставок")
+            schedule_type = st.radio(
+                "Тип расписания",
+                options=["frequency", "days"],
+                format_func=lambda x: "Периодичность (каждые N дней)" if x == "frequency" else "Конкретные дни недели",
+                horizontal=True,
+                key="dialog_r_q_schedule"
+            )
+            
+            if schedule_type == "frequency":
+                delivery_frequency = st.number_input("Периодичность (дней)", min_value=1, value=2, step=1, key="dialog_r_q_freq")
+                delivery_days = []
+            else:
+                delivery_frequency = 0
+                day_map = {"Пн": 0, "Вт": 1, "Ср": 2, "Чт": 3, "Пт": 4, "Сб": 5, "Вс": 6}
+                selected_days = st.multiselect("Дни поставок", ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"], default=["Пн","Чт"], key="dialog_r_q_days")
+                delivery_days = [day_map[d] for d in selected_days]
+            
+            delivery_type = "fixed"
+            box_size = 0
+            min_stock = 0
+            reorder_point = None
+            max_stock = None
+        
+        # ===== (s, S) =====
+        elif strategy_type == "s_s":
+            delivery_type = st.radio(
+                "Способ поставки",
+                options=["unit", "box"],
+                format_func=lambda x: "📦 Штучно" if x == "unit" else "📦 Коробками/ящиками",
+                horizontal=True,
+                key="dialog_s_s_delivery_type"
+            )
+            
+            box_size = 0
+            if delivery_type == "box":
+                box_size = st.number_input("Размер упаковки (шт/кг)", min_value=1, value=20, step=5, key="dialog_s_s_box_size")
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                reorder_point = st.number_input("📉 Точка заказа (s)", min_value=0.0, value=100.0, step=10.0, key="dialog_s_s_reorder")
+            with col2:
+                max_stock = st.number_input("📈 Максимальный запас (S)", min_value=0.0, value=300.0, step=50.0, key="dialog_s_s_max")
+            
+            st.caption("⚡ Поставка происходит при остатке ниже s, независимо от расписания")
+            
+            fixed_quantity = None
+            delivery_frequency = 0
+            delivery_days = []
+            min_stock = max_stock
+        
+        # ===== Пользовательская =====
+        else:  # custom
+            st.info("🔧 Конструктор стратегии: выберите, как будет работать пополнение запасов")
+            
+            st.subheader("⏰ Когда делать заказ?")
+            trigger_type = st.radio(
+                "Триггер заказа",
+                options=["schedule", "reorder_point"],
+                format_func=lambda x: "📅 По расписанию" if x == "schedule" else "📉 При остатке ниже s",
+                horizontal=True,
+                key="dialog_custom_trigger"
+            )
+            
+            if trigger_type == "schedule":
+                schedule_type = st.radio(
+                    "Тип расписания",
+                    options=["frequency", "days"],
+                    format_func=lambda x: "Периодичность (каждые N дней)" if x == "frequency" else "Конкретные дни недели",
+                    horizontal=True,
+                    key="dialog_custom_schedule"
+                )
+                
+                if schedule_type == "frequency":
+                    delivery_frequency = st.number_input("Периодичность (дней)", min_value=1, value=2, step=1, key="dialog_custom_freq")
+                    delivery_days = []
+                else:
+                    delivery_frequency = 0
+                    day_map = {"Пн": 0, "Вт": 1, "Ср": 2, "Чт": 3, "Пт": 4, "Сб": 5, "Вс": 6}
+                    selected_days = st.multiselect("Дни поставок", ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"], default=["Пн","Чт"], key="dialog_custom_days")
+                    delivery_days = [day_map[d] for d in selected_days]
+                
+                reorder_point = None
+            else:
+                delivery_frequency = 0
+                delivery_days = []
+                reorder_point = st.number_input("📉 Точка заказа (s)", min_value=0.0, value=100.0, step=10.0, key="dialog_custom_reorder")
+                schedule_type = None
+            
+            st.subheader("📦 Что заказываем?")
+            order_type = st.radio(
+                "Тип заказа",
+                options=["to_level", "fixed_quantity"],
+                format_func=lambda x: "📈 До целевого уровня S" if x == "to_level" else "📦 Фиксированный объём Q",
+                horizontal=True,
+                key="dialog_custom_order"
+            )
+            
+            if order_type == "to_level":
+                max_stock = st.number_input("📈 Максимальный запас (S)", min_value=0.0, value=300.0, step=50.0, key="dialog_custom_max")
+                fixed_quantity = None
+                min_stock = max_stock
+            else:
+                fixed_quantity = st.number_input("📦 Фиксированный объём Q", min_value=1, value=100, step=10, key="dialog_custom_fixed")
+                max_stock = None
+                min_stock = 0
+            
+            delivery_type = st.radio(
+                "Способ поставки (для штучных заказов)",
+                options=["unit", "box"],
+                format_func=lambda x: "📦 Штучно" if x == "unit" else "📦 Коробками/ящиками",
+                horizontal=True,
+                key="dialog_custom_delivery"
+            )
+            
+            box_size = 0
+            if delivery_type == "box":
+                box_size = st.number_input("Размер упаковки (шт/кг)", min_value=1, value=20, step=5, key="dialog_custom_box_size")
+    
+    # ========== ВКЛАДКА 3: ДОСТАВКА ==========
+    with tab3:
         st.subheader("💰 Стоимость доставки")
 
         delivery_cost_type = st.selectbox(
@@ -452,35 +699,83 @@ def settings_dialog():
             st.caption(f"📊 Пример: при заказе 100 кг стоимость = "
                     f"{delivery_fixed_cost + delivery_rate_cost * 100:.0f} руб")
     
+    # ========== КНОПКИ СОХРАНЕНИЯ ==========
     st.markdown("---")
     
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         if st.button("✅ Сохранить настройки", type="primary", use_container_width=True, key="dialog_save"):
-            # Получаем текущий min_stock из session_state или используем значение по умолчанию
-            current_min_stock = st.session_state.settings.get('min_stock', 300)
+            # Получаем значения в зависимости от выбранной стратегии
+            if strategy_type == "r_s":
+                final_delivery_type = delivery_type
+                final_box_size = box_size
+                final_fixed_quantity = None
+                final_delivery_frequency = delivery_frequency
+                final_delivery_days = delivery_days
+                final_schedule_type = schedule_type
+                final_reorder_point = None
+                final_max_stock = None
+                final_min_stock = min_stock
+            elif strategy_type == "r_q":
+                final_delivery_type = "fixed"
+                final_box_size = 0
+                final_fixed_quantity = fixed_quantity
+                final_delivery_frequency = delivery_frequency
+                final_delivery_days = delivery_days
+                final_schedule_type = schedule_type
+                final_reorder_point = None
+                final_max_stock = None
+                final_min_stock = 0
+            elif strategy_type == "s_s":
+                final_delivery_type = delivery_type
+                final_box_size = box_size
+                final_fixed_quantity = None
+                final_delivery_frequency = 0
+                final_delivery_days = []
+                final_schedule_type = None
+                final_reorder_point = reorder_point
+                final_max_stock = max_stock
+                final_min_stock = max_stock
+            else:  # custom
+                final_delivery_type = delivery_type
+                final_box_size = box_size
+                final_fixed_quantity = fixed_quantity if 'fixed_quantity' in dir() else None
+                final_delivery_frequency = delivery_frequency if 'delivery_frequency' in dir() else 0
+                final_delivery_days = delivery_days if 'delivery_days' in dir() else []
+                final_schedule_type = schedule_type if 'schedule_type' in dir() else None
+                final_reorder_point = reorder_point if 'reorder_point' in dir() else None
+                final_max_stock = max_stock if 'max_stock' in dir() else None
+                final_min_stock = min_stock if 'min_stock' in dir() else 0
             
             st.session_state.settings = {
+                # Общие настройки
                 'distribution': distribution,
                 'weekday_factors': weekday_factors,
-                'delivery_type': delivery_type,
-                'box_size': box_size,
-                'fixed_quantity': fixed_quantity,
-                'delivery_frequency': delivery_frequency,
-                'delivery_days': delivery_days,
-                'schedule_type': schedule_type,
+                'spoilage_type': spoilage_type,
+                'power_p': power_p,
+                'logistic_k': logistic_k,
+                'fifo_percent': fifo_percent,
                 'use_custom_bounds': use_custom_bounds if distribution == "uniform" else False,
                 'demand_min': demand_min if distribution == "uniform" and use_custom_bounds else None,
                 'demand_max': demand_max if distribution == "uniform" and use_custom_bounds else None,
-                # Параметры доставки
+                # Даты симуляции (ДОБАВЛЕНО)
+                'sim_start_date': start_date.strftime('%Y-%m-%d'),
+                'sim_end_date': end_date.strftime('%Y-%m-%d'),
+                # Доставка
                 'delivery_cost_type': delivery_cost_type,
                 'delivery_fixed_cost': delivery_fixed_cost,
                 'delivery_rate_cost': delivery_rate_cost,
-                # Параметры (s, S)-стратегии
-                'reorder_point': reorder_point if schedule_type == "ss_policy" else None,
-                'max_stock': max_stock if schedule_type == "ss_policy" else None,
-                # Сохраняем min_stock (для совместимости)
-                'min_stock': max_stock if schedule_type == "ss_policy" else current_min_stock
+                # Стратегия
+                'strategy_type': strategy_type,
+                'delivery_type': final_delivery_type,
+                'box_size': final_box_size,
+                'fixed_quantity': final_fixed_quantity,
+                'delivery_frequency': final_delivery_frequency,
+                'delivery_days': final_delivery_days,
+                'schedule_type': final_schedule_type,
+                'reorder_point': final_reorder_point,
+                'max_stock': final_max_stock,
+                'min_stock': final_min_stock
             }
             st.success("✅ Настройки сохранены!")
             st.rerun()
@@ -542,7 +837,7 @@ with tab1:
             <ul>
                 <li>Три модели порчи</li>
                 <li>Два закона распределения спроса</li>
-                <li>Стратегии поставок (периодические / по дням)</li>
+                <li>Четыре стратегии поставок</li>
                 <li>Поведение покупателей (FIFO / LIFO)</li>
             </ul>
         </div>
@@ -568,9 +863,9 @@ with tab1:
     st.markdown("""
     <div class="steps-container">
         <p><span class="step-number">1</span> <span class="step-text">Перейдите на вкладку <b>«Симуляция»</b> сверху</span></p>
-        <p><span class="step-number">2</span> <span class-step-text">Выберите продукт из базы данных</span></p>
-        <p><span class="step-number">3</span> <span class="step-text">Настройте параметры симуляции (количество дней, целевой запас, тип порчи)</span></p>
-        <p><span class="step-number">4</span> <span class="step-text">При необходимости откройте <b>«Настройки»</b> (⚙️) для изменения законов спроса и поставок</span></p>
+        <p><span class="step-number">2</span> <span class="step-text">Выберите продукт из базы данных</span></p>
+        <p><span class="step-number">3</span> <span class="step-text">Нажмите <b>«Настройки»</b> (⚙️) для выбора параметров симуляции</span></p>
+        <p><span class="step-number">4</span> <span class="step-text">Выберите стратегию поставок и настройте параметры</span></p>
         <p><span class="step-number">5</span> <span class="step-text">Нажмите <b>«Запустить симуляцию»</b> и анализируйте результаты</span></p>
         <p style="margin-top: 1rem;"><span class="step-text">🗄️ Для добавления собственных товаров перейдите на вкладку <b>«База данных»</b></span></p>
     </div>
