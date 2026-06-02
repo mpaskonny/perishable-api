@@ -204,7 +204,10 @@ if 'settings' not in st.session_state:
         'schedule_type': 'frequency',
         'reorder_point': None,
         'max_stock': None,
-        'min_stock': 300
+        'min_stock': 300,
+        'utilization_price': 5.0, 
+        'sim_start_date': '2026-02-01',
+        'sim_end_date': '2026-03-03'
     }
 
 # Инициализация для реальных данных
@@ -369,7 +372,21 @@ def settings_dialog():
         
         weekday_factors = [mon, tue, wed, thu, fri, sat, sun]
 
-                # ========== БЛОК ВЫБОРА ДАТ ==========
+        # ========== ДОБАВИТЬ ЭТОТ БЛОК ==========
+        st.markdown("---")
+        st.subheader("🗑️ Утилизация просроченного товара")
+        
+        utilization_price = st.number_input(
+            "Стоимость утилизации (руб/кг или руб/шт)",
+            min_value=0.0,
+            value=st.session_state.settings.get('utilization_price', 5.0),
+            step=1.0,
+            key="dialog_utilization_price",
+            help="Затраты на утилизацию единицы просроченного товара. Для товаров с постепенной порчей можно оставить 0."
+        )
+        # =====================================
+
+        # ========== БЛОК ВЫБОРА ДАТ ==========
         st.markdown("---")
         st.subheader("📅 Период симуляции")
         
@@ -840,6 +857,8 @@ def settings_dialog():
                 'use_custom_bounds': use_custom_bounds if distribution == "uniform" else False,
                 'demand_min': demand_min if distribution == "uniform" and use_custom_bounds else None,
                 'demand_max': demand_max if distribution == "uniform" and use_custom_bounds else None,
+                # Утилизация
+                'utilization_price': utilization_price,
                 # Даты симуляции
                 'sim_start_date': start_date.strftime('%Y-%m-%d'),
                 'sim_end_date': end_date.strftime('%Y-%m-%d'),

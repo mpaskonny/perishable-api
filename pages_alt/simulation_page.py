@@ -247,7 +247,7 @@ def show():
                 "product_name": selected_product_name,
                 "fifo_percent": float(fifo_percent) if product_category == "strict" else None,
                 "lifo_percent": float(100 - fifo_percent) if product_category == "strict" else None,
-                "utilization_price": 5.0 if product_category == "strict" else 0.0,
+                "utilization_price": settings.get('utilization_price', 5.0),
                 "sigma_buyer": 1.51 if product_category == "strict" else None,
                 "use_real_demand": use_real_demand,
                 "real_demand_dates": real_demand_dates if use_real_demand else None,

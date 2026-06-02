@@ -204,13 +204,14 @@ def create_product(params: SimulationParams) -> Product:
 
     
     # ========== 3. СТРАТЕГИЯ ПОРЧИ ==========
+    # Утилизация для всех типов товаров (из настроек)
+    utilization_price = params.utilization_price if params.utilization_price is not None else DEFAULT_UTILIZATION_PRICE
+    
     if category_id == 1:  # strict (молоко)
         spoilage_strategy = StrictExpirySpoilage()
         is_strict = True
-        utilization_price = params.utilization_price or DEFAULT_UTILIZATION_PRICE
     else:  # gradual
         is_strict = False
-        utilization_price = 0.0
         
         if params.spoilage_type == "linear":
             spoilage_strategy = LinearSpoilage(params.shelf_life_days)
