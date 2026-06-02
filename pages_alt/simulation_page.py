@@ -234,7 +234,7 @@ def show():
                 "delivery_type": final_delivery_type,
                 "box_size": final_box_size,
                 "fixed_quantity": final_fixed_quantity,
-                "schedule_type": schedule_type if strategy_type != "s_s" else None,
+                "schedule_type": schedule_type,
                 "delivery_frequency": delivery_frequency if schedule_type == "frequency" else 0,
                 "delivery_days": delivery_days if schedule_type == "days" else [],
                 "reorder_point": final_reorder_point,

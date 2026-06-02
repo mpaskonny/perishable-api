@@ -476,6 +476,24 @@ def settings_dialog():
     
     # ========== ВКЛАДКА 2: СТРАТЕГИЯ ПОСТАВОК ==========
     with tab2:
+        # Загружаем сохранённые значения
+        saved_strategy_type = st.session_state.settings.get('strategy_type', 'r_s')
+        saved_delivery_type = st.session_state.settings.get('delivery_type', 'unit')
+        box_size_val = st.session_state.settings.get('box_size', 20)
+        saved_box_size = int(box_size_val) if box_size_val is not None else 20
+        delivery_freq_val = st.session_state.settings.get('delivery_frequency', 2)
+        saved_delivery_frequency = int(delivery_freq_val) if delivery_freq_val is not None and int(delivery_freq_val) >= 1 else 2
+        fixed_q_val = st.session_state.settings.get('fixed_quantity', 100)
+        saved_fixed_quantity = float(fixed_q_val) if fixed_q_val is not None else 100.0
+        reorder_val = st.session_state.settings.get('reorder_point', 100)
+        saved_reorder_point = float(reorder_val) if reorder_val is not None else 100.0
+        max_stock_val = st.session_state.settings.get('max_stock', 300)
+        saved_max_stock = float(max_stock_val) if max_stock_val is not None else 300.0
+        min_stock_val = st.session_state.settings.get('min_stock', 300)
+        saved_min_stock = float(min_stock_val) if min_stock_val is not None else 300.0
+        saved_schedule_type = st.session_state.settings.get('schedule_type', 'frequency')
+        saved_delivery_days = st.session_state.settings.get('delivery_days', [0, 3])
+        
         st.markdown("### 🎯 Выберите стратегию")
         
         strategy_type = st.radio(
@@ -488,6 +506,7 @@ def settings_dialog():
                 "s_q": "🎯 (s, Q) — Двухуровневая с фиксированным объёмом",
                 "custom": "🔧 Пользовательская (конструктор)"
             }[x],
+            index=["r_s", "r_q", "s_s", "s_q", "custom"].index(saved_strategy_type),
             key="dialog_strategy_type",
             label_visibility="collapsed"
         )
@@ -502,12 +521,13 @@ def settings_dialog():
                 options=["unit", "box"],
                 format_func=lambda x: "📦 Штучно" if x == "unit" else "📦 Коробками/ящиками",
                 horizontal=True,
+                index=0 if saved_delivery_type == "unit" else 1,
                 key="dialog_r_s_delivery_type"
             )
             
             box_size = 0
             if delivery_type == "box":
-                box_size = st.number_input("Размер упаковки (шт/кг)", min_value=1, value=20, step=5, key="dialog_r_s_box_size")
+                box_size = st.number_input("Размер упаковки (шт/кг)", min_value=1, value=saved_box_size, step=1, key="dialog_r_s_box_size")
             
             st.subheader("📅 Расписание поставок")
             schedule_type = st.radio(
@@ -515,19 +535,21 @@ def settings_dialog():
                 options=["frequency", "days"],
                 format_func=lambda x: "Периодичность (каждые N дней)" if x == "frequency" else "Конкретные дни недели",
                 horizontal=True,
+                index=0 if saved_schedule_type == "frequency" else 1,
                 key="dialog_r_s_schedule"
             )
             
             if schedule_type == "frequency":
-                delivery_frequency = st.number_input("Периодичность (дней)", min_value=1, value=2, step=1, key="dialog_r_s_freq")
+                delivery_frequency = st.number_input("Периодичность (дней)", min_value=1, value=max(1, saved_delivery_frequency), step=1, key="dialog_r_s_freq")
                 delivery_days = []
             else:
                 delivery_frequency = 0
                 day_map = {"Пн": 0, "Вт": 1, "Ср": 2, "Чт": 3, "Пт": 4, "Сб": 5, "Вс": 6}
-                selected_days = st.multiselect("Дни поставок", ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"], default=["Пн","Чт"], key="dialog_r_s_days")
+                default_days = [k for k, v in day_map.items() if v in saved_delivery_days]
+                selected_days = st.multiselect("Дни поставок", ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"], default=default_days, key="dialog_r_s_days")
                 delivery_days = [day_map[d] for d in selected_days]
             
-            min_stock = st.number_input("📦 Целевой уровень запаса", min_value=0.0, value=300.0, step=50.0, key="dialog_r_s_min_stock")
+            min_stock = st.number_input("📦 Целевой уровень запаса", min_value=0.0, value=saved_min_stock, step=50.0, key="dialog_r_s_min_stock")
             
             fixed_quantity = None
             reorder_point = None
@@ -535,7 +557,7 @@ def settings_dialog():
         
         # ===== (R, Q) =====
         elif strategy_type == "r_q":
-            fixed_quantity = st.number_input("📦 Фиксированный объём поставки (шт/кг)", min_value=1, value=100, step=10, key="dialog_r_q_fixed")
+            fixed_quantity = st.number_input("📦 Фиксированный объём поставки (шт/кг)", min_value=1.0, value=saved_fixed_quantity, step=10.0, key="dialog_r_q_fixed")
             
             st.subheader("📅 Расписание поставок")
             schedule_type = st.radio(
@@ -543,16 +565,18 @@ def settings_dialog():
                 options=["frequency", "days"],
                 format_func=lambda x: "Периодичность (каждые N дней)" if x == "frequency" else "Конкретные дни недели",
                 horizontal=True,
+                index=0 if saved_schedule_type == "frequency" else 1,
                 key="dialog_r_q_schedule"
             )
             
             if schedule_type == "frequency":
-                delivery_frequency = st.number_input("Периодичность (дней)", min_value=1, value=2, step=1, key="dialog_r_q_freq")
+                delivery_frequency = st.number_input("Периодичность (дней)", min_value=1, value=max(1, saved_delivery_frequency), step=1, key="dialog_r_q_freq")
                 delivery_days = []
             else:
                 delivery_frequency = 0
                 day_map = {"Пн": 0, "Вт": 1, "Ср": 2, "Чт": 3, "Пт": 4, "Сб": 5, "Вс": 6}
-                selected_days = st.multiselect("Дни поставок", ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"], default=["Пн","Чт"], key="dialog_r_q_days")
+                default_days = [k for k, v in day_map.items() if v in saved_delivery_days]
+                selected_days = st.multiselect("Дни поставок", ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"], default=default_days, key="dialog_r_q_days")
                 delivery_days = [day_map[d] for d in selected_days]
             
             delivery_type = "fixed"
@@ -568,18 +592,19 @@ def settings_dialog():
                 options=["unit", "box"],
                 format_func=lambda x: "📦 Штучно" if x == "unit" else "📦 Коробками/ящиками",
                 horizontal=True,
+                index=0 if saved_delivery_type == "unit" else 1,
                 key="dialog_s_s_delivery_type"
             )
             
             box_size = 0
             if delivery_type == "box":
-                box_size = st.number_input("Размер упаковки (шт/кг)", min_value=1, value=20, step=5, key="dialog_s_s_box_size")
+                box_size = st.number_input("Размер упаковки (шт/кг)", min_value=1, value=saved_box_size, step=1, key="dialog_s_s_box_size")
             
             col1, col2 = st.columns(2)
             with col1:
-                reorder_point = st.number_input("📉 Точка заказа (s)", min_value=0.0, value=100.0, step=10.0, key="dialog_s_s_reorder")
+                reorder_point = st.number_input("📉 Точка заказа (s)", min_value=0.0, value=saved_reorder_point, step=10.0, key="dialog_s_s_reorder")
             with col2:
-                max_stock = st.number_input("📈 Максимальный запас (S)", min_value=0.0, value=300.0, step=50.0, key="dialog_s_s_max")
+                max_stock = st.number_input("📈 Максимальный запас (S)", min_value=0.0, value=saved_max_stock, step=50.0, key="dialog_s_s_max")
             
             st.caption("⚡ Поставка происходит при остатке ниже s, независимо от расписания")
             
@@ -588,26 +613,27 @@ def settings_dialog():
             delivery_days = []
             min_stock = max_stock
         
-        # ===== (s, Q) — Двухуровневая с фиксированным объёмом =====
+        # ===== (s, Q) =====
         elif strategy_type == "s_q":
             delivery_type = st.radio(
                 "Способ поставки",
                 options=["unit", "box"],
                 format_func=lambda x: "📦 Штучно" if x == "unit" else "📦 Коробками/ящиками",
                 horizontal=True,
+                index=0 if saved_delivery_type == "unit" else 1,
                 key="dialog_s_q_delivery_type"
             )
             
             box_size = 0
             if delivery_type == "box":
-                box_size = st.number_input("Размер упаковки (шт/кг)", min_value=1, value=20, step=5, key="dialog_s_q_box_size")
+                box_size = st.number_input("Размер упаковки (шт/кг)", min_value=1, value=saved_box_size, step=1, key="dialog_s_q_box_size")
             
             col1, col2 = st.columns(2)
             with col1:
                 reorder_point = st.number_input(
                     "📉 Точка заказа (s)", 
                     min_value=0.0, 
-                    value=100.0, 
+                    value=saved_reorder_point, 
                     step=10.0, 
                     key="dialog_s_q_reorder",
                     help="При остатке ниже этого уровня делается заказ"
@@ -616,7 +642,7 @@ def settings_dialog():
                 fixed_quantity = st.number_input(
                     "📦 Фиксированный объём заказа (Q)", 
                     min_value=1.0, 
-                    value=150.0, 
+                    value=saved_fixed_quantity, 
                     step=10.0, 
                     key="dialog_s_q_fixed",
                     help="Заказывается всегда одно и то же количество"
@@ -624,7 +650,6 @@ def settings_dialog():
             
             st.caption("⚡ Поставка происходит при остатке ниже s, заказывается фиксированное количество Q")
             
-            # Для совместимости с остальным кодом
             delivery_frequency = 0
             delivery_days = []
             schedule_type = None
@@ -650,23 +675,25 @@ def settings_dialog():
                     options=["frequency", "days"],
                     format_func=lambda x: "Периодичность (каждые N дней)" if x == "frequency" else "Конкретные дни недели",
                     horizontal=True,
+                    index=0 if saved_schedule_type == "frequency" else 1,
                     key="dialog_custom_schedule"
                 )
                 
                 if schedule_type == "frequency":
-                    delivery_frequency = st.number_input("Периодичность (дней)", min_value=1, value=2, step=1, key="dialog_custom_freq")
+                    delivery_frequency = st.number_input("Периодичность (дней)", min_value=1, value=max(1, saved_delivery_frequency), step=1, key="dialog_custom_freq")
                     delivery_days = []
                 else:
                     delivery_frequency = 0
                     day_map = {"Пн": 0, "Вт": 1, "Ср": 2, "Чт": 3, "Пт": 4, "Сб": 5, "Вс": 6}
-                    selected_days = st.multiselect("Дни поставок", ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"], default=["Пн","Чт"], key="dialog_custom_days")
+                    default_days = [k for k, v in day_map.items() if v in saved_delivery_days]
+                    selected_days = st.multiselect("Дни поставок", ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"], default=default_days, key="dialog_custom_days")
                     delivery_days = [day_map[d] for d in selected_days]
                 
                 reorder_point = None
             else:
                 delivery_frequency = 0
                 delivery_days = []
-                reorder_point = st.number_input("📉 Точка заказа (s)", min_value=0.0, value=100.0, step=10.0, key="dialog_custom_reorder")
+                reorder_point = st.number_input("📉 Точка заказа (s)", min_value=0.0, value=saved_reorder_point, step=10.0, key="dialog_custom_reorder")
                 schedule_type = None
             
             st.subheader("📦 Что заказываем?")
@@ -679,11 +706,11 @@ def settings_dialog():
             )
             
             if order_type == "to_level":
-                max_stock = st.number_input("📈 Максимальный запас (S)", min_value=0.0, value=300.0, step=50.0, key="dialog_custom_max")
+                max_stock = st.number_input("📈 Максимальный запас (S)", min_value=0.0, value=saved_max_stock, step=50.0, key="dialog_custom_max")
                 fixed_quantity = None
                 min_stock = max_stock
             else:
-                fixed_quantity = st.number_input("📦 Фиксированный объём Q", min_value=1, value=100, step=10, key="dialog_custom_fixed")
+                fixed_quantity = st.number_input("📦 Фиксированный объём Q", min_value=1.0, value=saved_fixed_quantity, step=10.0, key="dialog_custom_fixed")
                 max_stock = None
                 min_stock = 0
             
@@ -692,12 +719,13 @@ def settings_dialog():
                 options=["unit", "box"],
                 format_func=lambda x: "📦 Штучно" if x == "unit" else "📦 Коробками/ящиками",
                 horizontal=True,
+                index=0 if saved_delivery_type == "unit" else 1,
                 key="dialog_custom_delivery"
             )
             
             box_size = 0
             if delivery_type == "box":
-                box_size = st.number_input("Размер упаковки (шт/кг)", min_value=1, value=20, step=5, key="dialog_custom_box_size")
+                box_size = st.number_input("Размер упаковки (шт/кг)", min_value=1, value=saved_box_size, step=1, key="dialog_custom_box_size")
     
     # ========== ВКЛАДКА 3: ДОСТАВКА ==========
     with tab3:
@@ -759,11 +787,11 @@ def settings_dialog():
                 final_schedule_type = schedule_type
                 final_reorder_point = None
                 final_max_stock = None
-                final_min_stock = min_stock
+                final_min_stock = float(min_stock)
             elif strategy_type == "r_q":
                 final_delivery_type = "fixed"
                 final_box_size = 0
-                final_fixed_quantity = fixed_quantity
+                final_fixed_quantity = float(fixed_quantity)
                 final_delivery_frequency = delivery_frequency
                 final_delivery_days = delivery_days
                 final_schedule_type = schedule_type
@@ -777,29 +805,29 @@ def settings_dialog():
                 final_delivery_frequency = 0
                 final_delivery_days = []
                 final_schedule_type = None
-                final_reorder_point = reorder_point
-                final_max_stock = max_stock
-                final_min_stock = max_stock
+                final_reorder_point = float(reorder_point)
+                final_max_stock = float(max_stock)
+                final_min_stock = float(max_stock)
             elif strategy_type == "s_q":
                 final_delivery_type = delivery_type
                 final_box_size = box_size
-                final_fixed_quantity = fixed_quantity
+                final_fixed_quantity = float(fixed_quantity)
                 final_delivery_frequency = 0
                 final_delivery_days = []
                 final_schedule_type = None
-                final_reorder_point = reorder_point
+                final_reorder_point = float(reorder_point)
                 final_max_stock = None
                 final_min_stock = 0
             else:  # custom
                 final_delivery_type = delivery_type
                 final_box_size = box_size
-                final_fixed_quantity = fixed_quantity if 'fixed_quantity' in dir() else None
-                final_delivery_frequency = delivery_frequency if 'delivery_frequency' in dir() else 0
+                final_fixed_quantity = float(fixed_quantity) if fixed_quantity is not None else None
+                final_delivery_frequency = delivery_frequency if 'delivery_frequency' in dir() and delivery_frequency is not None else 0
                 final_delivery_days = delivery_days if 'delivery_days' in dir() else []
                 final_schedule_type = schedule_type if 'schedule_type' in dir() else None
-                final_reorder_point = reorder_point if 'reorder_point' in dir() else None
-                final_max_stock = max_stock if 'max_stock' in dir() else None
-                final_min_stock = min_stock if 'min_stock' in dir() else 0
+                final_reorder_point = float(reorder_point) if reorder_point is not None else None
+                final_max_stock = float(max_stock) if max_stock is not None else None
+                final_min_stock = float(min_stock) if 'min_stock' in dir() and min_stock is not None else 0
             
             st.session_state.settings = {
                 # Общие настройки
@@ -812,7 +840,7 @@ def settings_dialog():
                 'use_custom_bounds': use_custom_bounds if distribution == "uniform" else False,
                 'demand_min': demand_min if distribution == "uniform" and use_custom_bounds else None,
                 'demand_max': demand_max if distribution == "uniform" and use_custom_bounds else None,
-                # Даты симуляции (ДОБАВЛЕНО)
+                # Даты симуляции
                 'sim_start_date': start_date.strftime('%Y-%m-%d'),
                 'sim_end_date': end_date.strftime('%Y-%m-%d'),
                 # Доставка

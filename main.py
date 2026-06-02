@@ -176,23 +176,32 @@ def create_product(params: SimulationParams) -> Product:
             box_size=params.box_size or 0
         )
     else:
-        # Периодические поставки (до целевого уровня)
-        if category_id == 1:  # strict (молоко)
-            freq = params.milk_delivery_frequency or delivery_frequency or 2
-            delivery_strategy = PeriodicDelivery(
-                freq,
+        # (R, S) — периодическая до целевого уровня
+        # Проверяем тип расписания
+        if params.schedule_type == "days":
+            # Поставки по дням недели
+            delivery_days = params.delivery_days or [0, 3]
+            delivery_strategy = DaysOfWeekDelivery(
+                delivery_days=delivery_days,
                 cost_type=cost_type,
                 fixed_cost=fixed_cost,
                 rate_cost=rate_cost
             )
+
         else:
-            freq = params.tomatoes_delivery_frequency or delivery_frequency or 2
+            # Поставки с фиксированной периодичностью
+            if params.schedule_type == "frequency":
+                freq = params.delivery_frequency or 2
+            else:
+                freq = 2  # значение по умолчанию
+            
             delivery_strategy = PeriodicDelivery(
-                freq,
+                frequency=freq,
                 cost_type=cost_type,
                 fixed_cost=fixed_cost,
                 rate_cost=rate_cost
             )
+
     
     # ========== 3. СТРАТЕГИЯ ПОРЧИ ==========
     if category_id == 1:  # strict (молоко)
