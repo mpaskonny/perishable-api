@@ -163,6 +163,18 @@ def create_product(params: SimulationParams) -> Product:
             delivery_type=params.delivery_type or "unit",
             box_size=params.box_size or 0
         )
+    elif params.strategy_type == "s_q":
+        # (s, Q)-стратегия
+        from core.delivery import SQuantityDelivery
+        delivery_strategy = SQuantityDelivery(
+            reorder_point=params.reorder_point,
+            fixed_quantity=params.fixed_quantity,
+            cost_type=cost_type,
+            fixed_cost=fixed_cost,
+            rate_cost=rate_cost,
+            delivery_type=params.delivery_type or "unit",
+            box_size=params.box_size or 0
+        )
     else:
         # Периодические поставки (до целевого уровня)
         if category_id == 1:  # strict (молоко)

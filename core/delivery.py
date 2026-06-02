@@ -161,3 +161,54 @@ class FixedQuantityDelivery(DeliveryStrategy):
             return self.fixed_cost + self.rate_cost * order_quantity
         else:
             return 0.0
+
+class SQuantityDelivery(DeliveryStrategy):
+    """(s, Q)-стратегия управления запасами - точка заказа + фиксированный объём"""
+    
+    def __init__(self, reorder_point: float, fixed_quantity: float,
+                 cost_type: str = "fixed", fixed_cost: float = 0.0, 
+                 rate_cost: float = 0.0, delivery_type: str = "unit", 
+                 box_size: int = 0):
+        """
+        reorder_point: точка заказа (s) - при остатке ниже этого уровня делаем заказ
+        fixed_quantity: фиксированный объём заказа (Q)
+        """
+        self.reorder_point = reorder_point    # s
+        self.fixed_quantity = fixed_quantity  # Q
+        self.cost_type = cost_type
+        self.fixed_cost = fixed_cost
+        self.rate_cost = rate_cost
+        self.delivery_type = delivery_type
+        self.box_size = box_size
+    
+    def should_deliver(self, day, current_date, total_stock, min_stock):
+        """Проверяем, нужно ли делать заказ (остаток ниже точки заказа)"""
+        return total_stock < self.reorder_point
+    
+    def calculate_order(self, total_stock, min_stock, delivery_type, box_size):
+        """Рассчитываем размер заказа - всегда фиксированный объём Q"""
+        # Проверяем, что заказ действительно нужен
+        if total_stock >= self.reorder_point:
+            return 0
+        
+        order_qty = self.fixed_quantity
+        
+        # Учитываем тип поставки (коробками)
+        actual_delivery_type = delivery_type if delivery_type else self.delivery_type
+        actual_box_size = box_size if box_size else self.box_size
+        
+        if actual_delivery_type == "box" and actual_box_size > 0:
+            boxes_needed = int(math.ceil(order_qty / actual_box_size))
+            return boxes_needed * actual_box_size
+        return order_qty
+    
+    def calculate_delivery_cost(self, order_quantity: float) -> float:
+        """Рассчитываем стоимость доставки"""
+        if self.cost_type == "fixed":
+            return self.fixed_cost
+        elif self.cost_type == "rate":
+            return self.rate_cost * order_quantity
+        elif self.cost_type == "combined":
+            return self.fixed_cost + self.rate_cost * order_quantity
+        else:
+            return 0.0

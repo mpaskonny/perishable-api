@@ -60,6 +60,9 @@ class SimulationParams(BaseModel):
     delivery_fixed_cost: float = 0.0
     delivery_rate_cost: float = 0.0
     
+    # Тип стратегии (добавить)
+    strategy_type: Optional[str] = "r_s"  # r_s, r_q, s_s, s_q, custom
+    
     # Параметры расписания поставок
     schedule_type: Optional[str] = "frequency"
     delivery_frequency: Optional[int] = 2
@@ -69,9 +72,9 @@ class SimulationParams(BaseModel):
     
     # Поля для импорта данных (реальные даты из Excel)
     use_real_demand: bool = False
-    real_demand_dates: Optional[List[str]] = None      # список дат в формате YYYY-MM-DD
-    real_demand_values: Optional[List[float]] = None   # список значений спроса
-    real_start_date: Optional[str] = None              # ISO формат даты начала
+    real_demand_dates: Optional[List[str]] = None
+    real_demand_values: Optional[List[float]] = None
+    real_start_date: Optional[str] = None
 
 class DailyResult(BaseModel):
     """Результаты одного дня симуляции"""

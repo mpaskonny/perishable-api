@@ -480,11 +480,12 @@ def settings_dialog():
         
         strategy_type = st.radio(
             "Стратегия",
-            options=["r_s", "r_q", "s_s", "custom"],
+            options=["r_s", "r_q", "s_s", "s_q", "custom"],
             format_func=lambda x: {
                 "r_s": "📅 (R, S) — Периодическая до целевого уровня",
                 "r_q": "📦 (R, Q) — Фиксированный объём по расписанию",
                 "s_s": "📊 (s, S) — Двухуровневая (точка заказа)",
+                "s_q": "🎯 (s, Q) — Двухуровневая с фиксированным объёмом",
                 "custom": "🔧 Пользовательская (конструктор)"
             }[x],
             key="dialog_strategy_type",
@@ -587,6 +588,49 @@ def settings_dialog():
             delivery_days = []
             min_stock = max_stock
         
+        # ===== (s, Q) — Двухуровневая с фиксированным объёмом =====
+        elif strategy_type == "s_q":
+            delivery_type = st.radio(
+                "Способ поставки",
+                options=["unit", "box"],
+                format_func=lambda x: "📦 Штучно" if x == "unit" else "📦 Коробками/ящиками",
+                horizontal=True,
+                key="dialog_s_q_delivery_type"
+            )
+            
+            box_size = 0
+            if delivery_type == "box":
+                box_size = st.number_input("Размер упаковки (шт/кг)", min_value=1, value=20, step=5, key="dialog_s_q_box_size")
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                reorder_point = st.number_input(
+                    "📉 Точка заказа (s)", 
+                    min_value=0.0, 
+                    value=100.0, 
+                    step=10.0, 
+                    key="dialog_s_q_reorder",
+                    help="При остатке ниже этого уровня делается заказ"
+                )
+            with col2:
+                fixed_quantity = st.number_input(
+                    "📦 Фиксированный объём заказа (Q)", 
+                    min_value=1.0, 
+                    value=150.0, 
+                    step=10.0, 
+                    key="dialog_s_q_fixed",
+                    help="Заказывается всегда одно и то же количество"
+                )
+            
+            st.caption("⚡ Поставка происходит при остатке ниже s, заказывается фиксированное количество Q")
+            
+            # Для совместимости с остальным кодом
+            delivery_frequency = 0
+            delivery_days = []
+            schedule_type = None
+            min_stock = 0
+            max_stock = None
+
         # ===== Пользовательская =====
         else:  # custom
             st.info("🔧 Конструктор стратегии: выберите, как будет работать пополнение запасов")
@@ -736,6 +780,16 @@ def settings_dialog():
                 final_reorder_point = reorder_point
                 final_max_stock = max_stock
                 final_min_stock = max_stock
+            elif strategy_type == "s_q":
+                final_delivery_type = delivery_type
+                final_box_size = box_size
+                final_fixed_quantity = fixed_quantity
+                final_delivery_frequency = 0
+                final_delivery_days = []
+                final_schedule_type = None
+                final_reorder_point = reorder_point
+                final_max_stock = None
+                final_min_stock = 0
             else:  # custom
                 final_delivery_type = delivery_type
                 final_box_size = box_size

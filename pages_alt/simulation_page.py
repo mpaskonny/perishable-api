@@ -223,6 +223,7 @@ def show():
                 "purchase_price": float(selected_product['purchase_price']),
                 "sale_price": float(selected_product['sale_price']),
                 "distribution": distribution,
+                "strategy_type": strategy_type,
                 "weekday_factors": settings.get('weekday_factors', [0.8, 0.6, 0.9, 1.0, 1.3, 1.5, 1.1]),
                 "spoilage_type": spoilage_type,
                 "shelf_life_days": int(selected_product['shelf_life_days']),
