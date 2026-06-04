@@ -8,9 +8,6 @@ from datetime import datetime, timedelta
 def show():
     """Страница помощи"""
     
-    st.title("📖 Руководство пользователя")
-    st.markdown("---")
-    
     # Создаём вкладки внутри страницы
     tab1, tab2, tab3, tab4, tab5 = st.tabs([
         "🎯 О программе",

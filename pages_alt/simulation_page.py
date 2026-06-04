@@ -8,7 +8,7 @@ import numpy as np
 import os
 from database.db_manager import DatabaseManager
 
-def show():
+def show(settings_dialog=None):
     """Страница симуляции"""
     
     API_URL = "http://127.0.0.1:8000"
@@ -26,13 +26,24 @@ def show():
         st.error("❌ Нет товаров в базе данных. Добавьте товары во вкладке «База данных»")
         return
     
-    # Выбор товара
-    selected_product_name = st.selectbox(
-        "📦 Выберите продукт",
-        options=products_df['name'].tolist(),
-        key="sim_product"
-    )
+    # ===== ДВЕ КОЛОНКИ: выбор продукта (широкая) и кнопка настроек (узкая) =====
+    col_product, col_settings = st.columns([5, 1])
     
+    with col_product:
+        # Выбор товара
+        selected_product_name = st.selectbox(
+            "📦 Выберите продукт",
+            options=products_df['name'].tolist(),
+            key="sim_product"
+        )
+    
+    with col_settings:
+        # Пустой контейнер для выравнивания по вертикали
+        st.markdown("<div style='height: 30px;'></div>", unsafe_allow_html=True)
+        if settings_dialog and st.button("⚙️ Настройки", help="Открыть общие настройки", use_container_width=True):
+            settings_dialog()
+    
+    # Получаем выбранный продукт
     selected_product = products_df[products_df['name'] == selected_product_name].iloc[0]
     product_category = selected_product['category']
     

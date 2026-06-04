@@ -1,13 +1,17 @@
-/* Основной фон */
-.stApp {
-    background-color: #1a1a2e;
+/* styles.css - только стили оформления (цвета не трогаем) */
+
+/* ========== Убираем боковую панель ========== */
+[data-testid="stSidebar"] {
+    display: none !important;
+}
+[data-testid="stSidebarNav"] {
+    display: none !important;
+}
+[data-testid="collapsedControl"] {
+    display: none !important;
 }
 
-/* Принудительное растяжение на всю ширину */
-.stApp > header {
-    background-color: #1a1a2e;
-}
-
+/* ========== Расширяем основной контент ========== */
 .main .block-container {
     max-width: 100% !important;
     padding-left: 2rem !important;
@@ -15,50 +19,64 @@
     width: 100% !important;
 }
 
-section.main > div {
-    max-width: 100% !important;
+/* ========== Стили для вкладок (только оформление) ========== */
+.stTabs [data-baseweb="tab-list"] {
+    gap: 0 !important;
+    padding: 0.75rem 1.5rem !important;
+    margin: 0 !important;
+    border-radius: 15px !important;
+    display: flex !important;
+    width: 100% !important;
 }
 
-/* Заголовки */
+.stTabs [data-baseweb="tab"] {
+    font-size: 1.1rem !important;
+    font-weight: 500 !important;
+    padding: 0.75rem 0 !important;
+    border-radius: 10px !important;
+    transition: all 0.2s !important;
+    flex: 1 !important;
+    text-align: center !important;
+}
+
+/* ========== Шапка ========== */
 .main-title {
     font-size: 3rem;
     font-weight: bold;
     text-align: center;
-    background: linear-gradient(135deg, #e94560, #533483);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
     margin-bottom: 0.5rem;
 }
 
 .subtitle {
     font-size: 1.1rem;
     text-align: center;
-    color: #a0a0b0;
     margin-bottom: 2rem;
 }
 
 .section-title {
-    color: #e94560;
     margin-bottom: 1rem;
     font-size: 1.6rem;
     font-weight: 600;
 }
 
-/* Карточки */
+.simulation-title {
+    font-size: 2rem;
+    font-weight: bold;
+    margin: 0;
+    text-align: center;
+}
+
+/* ========== Карточки ========== */
 .feature-card {
-    background-color: #16213e;
     padding: 1.5rem;
     border-radius: 15px;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-    height: 100%;
+    height: 230px;
     transition: transform 0.2s;
-    border: 1px solid #2a2a4a;
+    justify-content: space-between;
 }
 
 .feature-card:hover {
     transform: translateY(-5px);
-    border-color: #e94560;
 }
 
 .feature-title {
@@ -66,25 +84,22 @@ section.main > div {
     font-weight: bold;
     margin-bottom: 1rem;
     text-align: center;
-    color: #e94560;
 }
 
 .feature-card ul {
-    color: #c0c0d0;
     padding-left: 1.2rem;
 }
 
 .feature-card li {
     margin-bottom: 0.5rem;
+    flex-grow: 1;
 }
 
-/* Шаги */
+/* ========== Шаги ========== */
 .step-number {
     display: inline-block;
     width: 32px;
     height: 32px;
-    background: linear-gradient(135deg, #e94560, #533483);
-    color: white;
     border-radius: 50%;
     text-align: center;
     line-height: 32px;
@@ -92,97 +107,130 @@ section.main > div {
     margin-right: 12px;
 }
 
-.step-text {
-    color: #c0c0d0;
-}
-
 .steps-container {
-    background-color: #16213e;
     padding: 1.5rem;
     border-radius: 15px;
-    border: 1px solid #2a2a4a;
 }
 
-/* Баннер */
 .welcome-banner {
-    background: linear-gradient(135deg, #16213e, #1a1a2e);
     padding: 1.2rem;
     border-radius: 15px;
     margin-bottom: 2rem;
-    border-left: 4px solid #e94560;
-    color: #c0c0d0;
+    border-left: 4px solid;
 }
 
-.welcome-banner h3 {
-    color: #e94560;
-    margin: 0;
-}
-
-/* Текст */
 .about-text {
-    color: #c0c0d0;
     font-size: 1rem;
     line-height: 1.6;
-    background-color: #16213e;
     padding: 1rem;
     border-radius: 10px;
 }
 
-/* Футер */
+/* ========== Футер ========== */
 .footer {
     text-align: center;
     padding: 2rem;
-    color: #6a6a80;
     font-size: 0.8rem;
-    border-top: 1px solid #2a2a4a;
+    border-top: 1px solid;
     margin-top: 2rem;
 }
 
-/* Демо-блок */
-.stat-demo {
-    background: linear-gradient(135deg, #16213e, #1a1a2e);
-    border-radius: 15px;
-    padding: 1rem;
-    text-align: center;
-    border: 1px solid #2a2a4a;
-    color: #c0c0d0;
-}
-
-.stat-demo .stat-value {
-    color: #e94560;
-    font-weight: bold;
-    font-size: 1.2rem;
-}
-
-/* Ссылки */
-a {
-    color: #e94560 !important;
-    text-decoration: none;
-}
-
-/* Кнопки в боковой панели */
+/* ========== Кнопки ========== */
 .stButton button {
-    background-color: #16213e;
-    color: #c0c0d0;
-    border: 1px solid #2a2a4a;
     border-radius: 10px;
     transition: all 0.2s;
     width: 100%;
 }
 
-.stButton button:hover {
-    background: linear-gradient(135deg, #e94560, #533483);
-    color: white;
-    border-color: #e94560;
+/* ========== Экспандер ========== */
+details {
+    border-radius: 10px;
+    margin-bottom: 10px;
 }
 
-/* Скрываем кнопку сворачивания боковой панели */
-[data-testid="collapsedControl"] {
-    display: none !important;
+summary {
+    padding: 10px 15px !important;
+    border-radius: 10px !important;
+    cursor: pointer !important;
+    font-weight: bold !important;
 }
 
-/* Боковая панель фиксированной ширины */
-section[data-testid="stSidebar"] {
-    min-width: 280px !important;
-    width: 280px !important;
+details > div {
+    padding: 15px !important;
+    border-radius: 0 0 10px 10px !important;
+}
+
+/* ========== Таблицы ========== */
+.stTable {
+    width: 100% !important;
+    border-radius: 10px !important;
+    overflow: hidden !important;
+}
+
+.stTable table {
+    border-collapse: collapse !important;
+    width: 100% !important;
+}
+
+/* ========== Кнопка скачать ========== */
+.stDownloadButton button {
+    border-radius: 10px;
+}
+
+/* ========== ОБВОДКИ ДЛЯ КОНТЕЙНЕРОВ ========== */
+
+/* Карточки */
+.feature-card {
+    border: 1px solid #e0d8c8;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+/* Шаги (кружочки с цифрами 1-5) */
+.step-number {
+    border: 1px solid #b86b3a;
+}
+
+/* Контейнер шагов */
+.steps-container {
+    border: 1px solid #e0d8c8;
+}
+
+/* Баннер приветствия */
+.welcome-banner {
+    border: 1px solid #e0d8c8;
+    border-left: 4px solid #b86b3a;
+}
+
+/* Текстовый блок "О проекте" */
+.about-text {
+    border: 1px solid #e0d8c8;
+}
+
+/* Вкладки */
+.stTabs [data-baseweb="tab-list"] {
+    border: 1px solid #d8d0c0;
+}
+
+/* Экспандер */
+details {
+    border: 1px solid #d0c8b8;
+}
+
+details > div {
+    border-top: 1px solid #d0c8b8;
+}
+
+/* Таблицы */
+.stTable th, .stTable td {
+    border: 1px solid #d0c8b8;
+}
+
+/* Кнопки */
+.stButton button {
+    border: 1px solid #d0c8b8;
+}
+
+/* Кнопка скачать */
+.stDownloadButton button {
+    border: 1px solid #d0c8b8;
 }

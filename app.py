@@ -10,171 +10,6 @@ st.set_page_config(
     layout="wide"
 )
 
-# Фикс ширины страницы и стили
-st.markdown("""
-    <style>
-        /* Убираем боковую панель */
-        [data-testid="stSidebar"] {
-            display: none !important;
-        }
-        [data-testid="stSidebarNav"] {
-            display: none !important;
-        }
-        [data-testid="collapsedControl"] {
-            display: none !important;
-        }
-        
-        /* Расширяем основной контент */
-        .main .block-container {
-            max-width: 100% !important;
-            padding-left: 2rem !important;
-            padding-right: 2rem !important;
-        }
-        
-        /* Стили для вкладок - тёмная тема, растянутые */
-        .stTabs [data-baseweb="tab-list"] {
-            gap: 0 !important;
-            background: linear-gradient(135deg, #1a1a2e, #16213e) !important;
-            padding: 0.75rem 1.5rem !important;
-            margin: 0 !important;
-            border-radius: 15px !important;
-            border: 1px solid #2a2a4a !important;
-            display: flex !important;
-            width: 100% !important;
-        }
-        
-        .stTabs [data-baseweb="tab"] {
-            font-size: 1.1rem !important;
-            font-weight: 500 !important;
-            padding: 0.75rem 0 !important;
-            color: #c0c0d0 !important;
-            background-color: transparent !important;
-            border-radius: 10px !important;
-            transition: all 0.2s !important;
-            flex: 1 !important;
-            text-align: center !important;
-        }
-        
-        .stTabs [data-baseweb="tab"]:hover {
-            background-color: rgba(233, 69, 96, 0.1) !important;
-            color: #e94560 !important;
-        }
-        
-        .stTabs [aria-selected="true"] {
-            background: linear-gradient(135deg, #e94560, #533483) !important;
-            color: white !important;
-        }
-        
-        .simulation-title {
-            font-size: 2rem;
-            font-weight: bold;
-            background: linear-gradient(135deg, #e94560, #533483);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            margin: 0;
-        }
-        
-        .main-title {
-            font-size: 3rem;
-            font-weight: bold;
-            text-align: center;
-            background: linear-gradient(135deg, #e94560, #533483);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            margin-bottom: 0.5rem;
-        }
-        .subtitle {
-            font-size: 1.1rem;
-            text-align: center;
-            color: #a0a0b0;
-            margin-bottom: 2rem;
-        }
-        .section-title {
-            color: #e94560;
-            margin-bottom: 1rem;
-            font-size: 1.6rem;
-            font-weight: 600;
-        }
-        .feature-card {
-            background-color: #16213e;
-            padding: 1.5rem;
-            border-radius: 15px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-            height: 100%;
-            transition: transform 0.2s;
-            border: 1px solid #2a2a4a;
-        }
-        .feature-card:hover {
-            transform: translateY(-5px);
-            border-color: #e94560;
-        }
-        .feature-title {
-            font-size: 1.4rem;
-            font-weight: bold;
-            margin-bottom: 1rem;
-            text-align: center;
-            color: #e94560;
-        }
-        .feature-card ul {
-            color: #c0c0d0;
-            padding-left: 1.2rem;
-        }
-        .feature-card li {
-            margin-bottom: 0.5rem;
-        }
-        .step-number {
-            display: inline-block;
-            width: 32px;
-            height: 32px;
-            background: linear-gradient(135deg, #e94560, #533483);
-            color: white;
-            border-radius: 50%;
-            text-align: center;
-            line-height: 32px;
-            font-weight: bold;
-            margin-right: 12px;
-        }
-        .step-text {
-            color: #c0c0d0;
-        }
-        .steps-container {
-            background-color: #16213e;
-            padding: 1.5rem;
-            border-radius: 15px;
-            border: 1px solid #2a2a4a;
-        }
-        .welcome-banner {
-            background: linear-gradient(135deg, #16213e, #1a1a2e);
-            padding: 1.2rem;
-            border-radius: 15px;
-            margin-bottom: 2rem;
-            border-left: 4px solid #e94560;
-            color: #c0c0d0;
-        }
-        .welcome-banner h3 {
-            color: #e94560;
-            margin: 0;
-        }
-        .about-text {
-            color: #c0c0d0;
-            font-size: 1rem;
-            line-height: 1.6;
-            background-color: #16213e;
-            padding: 1rem;
-            border-radius: 10px;
-        }
-        .footer {
-            text-align: center;
-            padding: 2rem;
-            color: #6a6a80;
-            font-size: 0.8rem;
-            border-top: 1px solid #2a2a4a;
-            margin-top: 2rem;
-        }
-    </style>
-""", unsafe_allow_html=True)
 
 # Загрузка стилей
 with open("styles.css", "r", encoding="utf-8") as f:
@@ -239,6 +74,20 @@ def settings_dialog():
     
     # ========== ВКЛАДКА 1: ОБЩИЕ НАСТРОЙКИ ==========
     with tab1:
+        # ========== ДОБАВИТЬ ПОСЛЕ БЛОКА УТИЛИЗАЦИИ ==========
+        st.markdown("---")
+        st.subheader("🔄 Усреднение результатов")
+        
+        num_simulations = st.number_input(
+            "Количество симуляций для усреднения",
+            min_value=1,
+            max_value=50,
+            value=st.session_state.settings.get('num_simulations', 1),
+            step=1,
+            key="dialog_num_simulations",
+            help="Прогон нескольких симуляций с разными случайными значениями и усреднение результатов"
+        )
+        # ====================================================
         col1, col2 = st.columns(2)
         
         with col1:
@@ -857,6 +706,7 @@ def settings_dialog():
                 'use_custom_bounds': use_custom_bounds if distribution == "uniform" else False,
                 'demand_min': demand_min if distribution == "uniform" and use_custom_bounds else None,
                 'demand_max': demand_max if distribution == "uniform" and use_custom_bounds else None,
+                'num_simulations': num_simulations,
                 # Утилизация
                 'utilization_price': utilization_price,
                 # Даты симуляции
@@ -996,29 +846,26 @@ with tab1:
 
 # ========== ВКЛАДКА 2: СИМУЛЯЦИЯ ==========
 with tab2:
-    col1, col2 = st.columns([4, 1])
-    with col1:
-        st.markdown('<div class="simulation-title">🎮 Симуляция управления запасами</div>', unsafe_allow_html=True)
-    with col2:
-        if st.button("⚙️ Настройки", help="Открыть общие настройки", use_container_width=True):
-            settings_dialog()
-    
+    st.markdown('<div class="simulation-title">🎮 Симуляция управления запасами</div>', unsafe_allow_html=True)
     st.markdown("---")
     
     from pages_alt import simulation_page
-    simulation_page.show()
+    simulation_page.show(settings_dialog)
 
 
 # ========== ВКЛАДКА 3: БАЗА ДАННЫХ ==========
 with tab3:
     st.markdown('<div class="simulation-title">🗄️ Управление базой данных</div>', unsafe_allow_html=True)
     st.markdown("---")
-    
+
     from pages_alt import database_page
     database_page.show()
 
 
 # ========== ВКЛАДКА 4: ПОМОЩЬ ==========
 with tab4:
+    st.markdown('<div class="simulation-title">📖 Руководство пользователя</div>', unsafe_allow_html=True)
+    st.markdown("---")
+
     from pages_alt.help_page import show as help_page_show
     help_page_show()
