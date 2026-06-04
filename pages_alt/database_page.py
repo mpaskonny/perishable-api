@@ -31,9 +31,7 @@ def show():
         st.session_state.delete_product_name = None
     if 'delete_product_id' not in st.session_state:
         st.session_state.delete_product_id = None
-    
-    st.title("🗄️ Управление базой данных")
-    st.markdown("---")
+
     
     tab1, tab2 = st.tabs(["📦 Товары", "📊 История экспериментов"])
     

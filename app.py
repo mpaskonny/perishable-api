@@ -342,11 +342,11 @@ def settings_dialog():
     
     # ========== ВКЛАДКА 2: СТРАТЕГИЯ ПОСТАВОК ==========
     with tab2:
-        # Загружаем сохранённые значения
+        # Загружаем сохранённые значения (с защитой от 0 для box_size)
         saved_strategy_type = st.session_state.settings.get('strategy_type', 'r_s')
         saved_delivery_type = st.session_state.settings.get('delivery_type', 'unit')
         box_size_val = st.session_state.settings.get('box_size', 20)
-        saved_box_size = int(box_size_val) if box_size_val is not None else 20
+        saved_box_size = max(1, int(box_size_val) if box_size_val is not None else 20)
         delivery_freq_val = st.session_state.settings.get('delivery_frequency', 2)
         saved_delivery_frequency = int(delivery_freq_val) if delivery_freq_val is not None and int(delivery_freq_val) >= 1 else 2
         fixed_q_val = st.session_state.settings.get('fixed_quantity', 100)
@@ -393,7 +393,7 @@ def settings_dialog():
             
             box_size = 0
             if delivery_type == "box":
-                box_size = st.number_input("Размер упаковки (шт/кг)", min_value=1, value=saved_box_size, step=1, key="dialog_r_s_box_size")
+                box_size = st.number_input("Размер упаковки (шт/кг)", min_value=1, value=max(1, saved_box_size), step=1, key="dialog_r_s_box_size")
             
             st.subheader("📅 Расписание поставок")
             schedule_type = st.radio(
@@ -464,7 +464,7 @@ def settings_dialog():
             
             box_size = 0
             if delivery_type == "box":
-                box_size = st.number_input("Размер упаковки (шт/кг)", min_value=1, value=saved_box_size, step=1, key="dialog_s_s_box_size")
+                box_size = st.number_input("Размер упаковки (шт/кг)", min_value=1, value=max(1, saved_box_size), step=1, key="dialog_s_s_box_size")
             
             col1, col2 = st.columns(2)
             with col1:
@@ -492,7 +492,7 @@ def settings_dialog():
             
             box_size = 0
             if delivery_type == "box":
-                box_size = st.number_input("Размер упаковки (шт/кг)", min_value=1, value=saved_box_size, step=1, key="dialog_s_q_box_size")
+                box_size = st.number_input("Размер упаковки (шт/кг)", min_value=1, value=max(1, saved_box_size), step=1, key="dialog_s_q_box_size")
             
             col1, col2 = st.columns(2)
             with col1:
@@ -591,7 +591,7 @@ def settings_dialog():
             
             box_size = 0
             if delivery_type == "box":
-                box_size = st.number_input("Размер упаковки (шт/кг)", min_value=1, value=saved_box_size, step=1, key="dialog_custom_box_size")
+                box_size = st.number_input("Размер упаковки (шт/кг)", min_value=1, value=max(1, saved_box_size), step=1, key="dialog_custom_box_size")
     
     # ========== ВКЛАДКА 3: ДОСТАВКА ==========
     with tab3:

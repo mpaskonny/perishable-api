@@ -8,6 +8,112 @@ import numpy as np
 import os
 from database.db_manager import DatabaseManager
 
+
+def run_multiple_simulations(params, num_simulations, API_URL, days):
+    """Запускает несколько симуляций и возвращает усреднённые результаты + статистику"""
+    
+    all_daily_histories = []
+    all_metrics = []
+    
+    with st.spinner(f"Запуск {num_simulations} симуляций..."):
+        progress_bar = st.progress(0)
+        
+        for i in range(num_simulations):
+            try:
+                response = requests.post(f"{API_URL}/simulate", json=params, timeout=30)
+                response.raise_for_status()
+                data = response.json()
+                all_daily_histories.append(data['daily_history'])
+                all_metrics.append(data)
+                progress_bar.progress((i + 1) / num_simulations)
+            except Exception as e:
+                st.error(f"Ошибка в симуляции {i+1}: {str(e)}")
+                continue
+    
+    if not all_daily_histories:
+        st.error("❌ Не удалось выполнить ни одной симуляции")
+        return None
+    
+    # Извлекаем значения метрик для статистики
+    revenues = [m['total_revenue'] for m in all_metrics]
+    profits = [m['profit'] for m in all_metrics]
+    unmet_demands = [sum(day.get('unmet_demand', 0) for day in m['daily_history']) for m in all_metrics]
+    spoilage_kg = [m['total_spoilage_kg'] for m in all_metrics]
+    costs = [m['total_cost'] for m in all_metrics]
+    avg_stocks = [m.get('avg_stock', 0) for m in all_metrics]
+    
+    # Усредняем метрики
+    avg_metrics = {
+        'total_revenue': np.mean(revenues),
+        'total_cost': np.mean(costs),
+        'total_purchase_cost': np.mean([m.get('total_purchase_cost', 0) for m in all_metrics]),
+        'total_delivery_cost': np.mean([m.get('total_delivery_cost', 0) for m in all_metrics]),
+        'total_utilization_cost': np.mean([m.get('total_utilization_cost', 0) for m in all_metrics]),
+        'total_spoilage_kg': np.mean(spoilage_kg),
+        'total_spoilage_money': np.mean([m['total_spoilage_money'] for m in all_metrics]),
+        'profit': np.mean(profits),
+        'avg_stock': np.mean(avg_stocks),
+        'std_profit': np.std(profits),
+        'num_simulations': len(all_metrics),
+        # Статистика для отображения
+        'stats': {
+            'revenue': {'min': min(revenues), 'max': max(revenues), 'avg': np.mean(revenues)},
+            'profit': {'min': min(profits), 'max': max(profits), 'avg': np.mean(profits)},
+            'spoilage': {'min': min(spoilage_kg), 'max': max(spoilage_kg), 'avg': np.mean(spoilage_kg)},
+            'cost': {'min': min(costs), 'max': max(costs), 'avg': np.mean(costs)},
+            'avg_stock': {'min': min(avg_stocks), 'max': max(avg_stocks), 'avg': np.mean(avg_stocks)},
+            'unmet_demand': {'min': min(unmet_demands), 'max': max(unmet_demands), 'avg': np.mean(unmet_demands)}
+        }
+    }
+    
+    # Усредняем дневные данные
+    avg_daily_history = []
+    for day_idx in range(days):
+        day_avg = {}
+        
+        # Числовые поля
+        for key in ['demand', 'start_stock', 'sales', 'spoilage', 'order', 'revenue', 'purchase_cost', 'end_stock', 'unmet_demand']:
+            values = []
+            for hist in all_daily_histories:
+                if day_idx < len(hist):
+                    values.append(hist[day_idx].get(key, 0))
+            day_avg[key] = np.mean(values) if values else 0
+        
+        # Поля, которые могут быть None
+        for key in ['stock_week1', 'stock_week2', 'stock_week3']:
+            values = []
+            for hist in all_daily_histories:
+                if day_idx < len(hist):
+                    val = hist[day_idx].get(key, 0)
+                    if val is not None:
+                        values.append(val)
+                    else:
+                        values.append(0)
+            day_avg[key] = np.mean(values) if values else 0
+        
+        # Поля для строгих товаров
+        for key in ['fifo_percent', 'lifo_percent']:
+            values = []
+            for hist in all_daily_histories:
+                if day_idx < len(hist):
+                    val = hist[day_idx].get(key)
+                    if val is not None:
+                        values.append(val)
+            day_avg[key] = np.mean(values) if values else None
+        
+        # Базовые поля
+        day_avg['day'] = day_idx + 1
+        day_avg['date'] = all_daily_histories[0][day_idx]['date'] if all_daily_histories else ""
+        
+        avg_daily_history.append(day_avg)
+
+    avg_metrics['daily_history'] = avg_daily_history
+    avg_metrics['demand_stats'] = all_metrics[0].get('demand_stats', {}) if all_metrics else {}
+    avg_metrics['spoilage_stats'] = all_metrics[0].get('spoilage_stats', {}) if all_metrics else {}
+    
+    return avg_metrics
+
+
 def show(settings_dialog=None):
     """Страница симуляции"""
     
@@ -38,7 +144,6 @@ def show(settings_dialog=None):
         )
     
     with col_settings:
-        # Пустой контейнер для выравнивания по вертикали
         st.markdown("<div style='height: 30px;'></div>", unsafe_allow_html=True)
         if settings_dialog and st.button("⚙️ Настройки", help="Открыть общие настройки", use_container_width=True):
             settings_dialog()
@@ -60,12 +165,9 @@ def show(settings_dialog=None):
     real_demand_dates = st.session_state.get('real_demand_dates')
     
     if use_real_demand and real_start_date and real_demand_dates:
-        # Используем даты из загруженного Excel
         start_date = datetime.fromisoformat(real_start_date)
-        end_date = start_date + timedelta(days=len(real_demand_dates) - 1)
         days = len(real_demand_dates)
     else:
-        # Используем даты из настроек (сохранённые пользователем)
         sim_start_date = settings.get('sim_start_date', '2026-02-01')
         sim_end_date = settings.get('sim_end_date', '2026-03-03')
         start_date = datetime.strptime(sim_start_date, '%Y-%m-%d')
@@ -95,7 +197,6 @@ def show(settings_dialog=None):
     with col_right:
         st.subheader("⚙️ Текущие настройки")
         
-        # Период
         if use_real_demand and real_start_date and real_demand_dates:
             start_date_dt = datetime.fromisoformat(real_start_date)
             end_date_dt = start_date_dt + timedelta(days=len(real_demand_dates) - 1)
@@ -109,16 +210,13 @@ def show(settings_dialog=None):
             days_count = (end_date_dt - start_date_dt).days + 1
             st.markdown(f"**📅 Период:** {start_date_dt.strftime('%d.%m.%Y')} — {end_date_dt.strftime('%d.%m.%Y')} ({days_count} дн)")
         
-        # Спрос
         distribution = settings.get('distribution', 'uniform')
         dist_text = "Равномерный" if distribution == "uniform" else "Нормальный"
         st.markdown(f"**📊 Спрос:** {dist_text}")
         
-        # Коэффициенты дней недели (кратко)
         factors = settings.get('weekday_factors', [0.8, 0.6, 0.9, 1.0, 1.3, 1.5, 1.1])
         st.markdown(f"**📅 Коэфф.:** Пн{factors[0]:.1f} Вт{factors[1]:.1f} Ср{factors[2]:.1f} Чт{factors[3]:.1f} Пт{factors[4]:.1f} Сб{factors[5]:.1f} Вс{factors[6]:.1f}")
         
-        # Порча или FIFO/LIFO
         if product_category == "strict":
             fifo = settings.get('fifo_percent', 75)
             st.markdown(f"**👥 Покупатели:** FIFO {fifo}% / LIFO {100-fifo}%")
@@ -134,17 +232,16 @@ def show(settings_dialog=None):
                 spoilage_text += f" (k={k:.0f})"
             st.markdown(f"**🕐 Порча:** {spoilage_text}")
         
-        # Стратегия поставок
         strategy_type = settings.get('strategy_type', 'r_s')
         strategy_names = {
             "r_s": "(R, S) — до целевого уровня",
             "r_q": "(R, Q) — фиксированный объём",
             "s_s": "(s, S) — точка заказа",
+            "s_q": "(s, Q) — фиксированный объём по точке заказа",
             "custom": "Пользовательская"
         }
         st.markdown(f"**🚚 Стратегия:** {strategy_names.get(strategy_type, '(R, S)')}")
         
-        # Доставка
         cost_type = settings.get('delivery_cost_type', 'none')
         if cost_type == 'none':
             st.markdown("**💰 Доставка:** ❌ Не учитывается")
@@ -184,8 +281,8 @@ def show(settings_dialog=None):
             delivery_fixed_cost = settings.get('delivery_fixed_cost', 0.0)
             delivery_rate_cost = settings.get('delivery_rate_cost', 0.0)
             strategy_type = settings.get('strategy_type', 'r_s')
+            num_simulations = settings.get('num_simulations', 1)
             
-            # Определяем даты симуляции
             use_real_demand = st.session_state.get('use_real_demand', False)
             real_demand_dates = st.session_state.get('real_demand_dates')
             real_demand_values = st.session_state.get('real_demand_values')
@@ -198,7 +295,6 @@ def show(settings_dialog=None):
                 start_date = datetime(2026, 2, 1)
                 days = 30
             
-            # Определяем параметры в зависимости от стратегии
             if strategy_type == "r_s":
                 min_stock = min_stock_setting
                 final_fixed_quantity = None
@@ -218,6 +314,13 @@ def show(settings_dialog=None):
                 final_fixed_quantity = None
                 final_reorder_point = reorder_point
                 final_max_stock = max_stock
+                final_delivery_type = delivery_type
+                final_box_size = box_size
+            elif strategy_type == "s_q":
+                min_stock = 0
+                final_fixed_quantity = fixed_quantity
+                final_reorder_point = reorder_point
+                final_max_stock = None
                 final_delivery_type = delivery_type
                 final_box_size = box_size
             else:  # custom
@@ -267,10 +370,18 @@ def show(settings_dialog=None):
             }
             
             try:
-                response = requests.post(f"{API_URL}/simulate", json=params, timeout=30)
-                response.raise_for_status()
-                data = response.json()
-                total_unmet = sum(day.get('unmet_demand', 0) for day in data['daily_history'])
+                if num_simulations > 1:
+                    data = run_multiple_simulations(params, num_simulations, API_URL, days)
+                    if data is None:
+                        return
+                    # ПЕРЕСЧИТЫВАЕМ total_unmet из усреднённых данных
+                    total_unmet = sum(day.get('unmet_demand', 0) for day in data['daily_history'])
+                    st.info(f"📊 Результаты усреднены по {num_simulations} симуляциям")
+                else:
+                    response = requests.post(f"{API_URL}/simulate", json=params, timeout=30)
+                    response.raise_for_status()
+                    data = response.json()
+                    total_unmet = sum(day.get('unmet_demand', 0) for day in data['daily_history'])
                 
                 st.session_state.simulation_results = {
                     'data': data,
@@ -282,7 +393,9 @@ def show(settings_dialog=None):
                     'days': days,
                     'min_stock': min_stock,
                     'spoilage_type': spoilage_type,
-                    'fifo_percent': fifo_percent
+                    'fifo_percent': fifo_percent,
+                    'num_simulations': num_simulations,
+                    'std_profit': data.get('std_profit', 0) if num_simulations > 1 else 0
                 }
                 st.session_state.last_saved_experiment_id = None
                 st.rerun()
@@ -310,6 +423,11 @@ def display_simulation_results(results):
     min_stock = results['min_stock']
     spoilage_type = results.get('spoilage_type', 'linear')
     fifo_percent = results.get('fifo_percent', 75)
+    num_simulations = results.get('num_simulations', 1)
+    std_profit = results.get('std_profit', 0)
+    
+    if num_simulations > 1:
+        st.info(f"📊 Результаты усреднены по {num_simulations} симуляциям | Стандартное отклонение прибыли: ±{std_profit:.0f} руб")
     
     # Кнопка сохранения
     col_save1, col_save2, col_save3 = st.columns([1, 2, 1])
@@ -379,6 +497,47 @@ def display_simulation_results(results):
 
     with col6:
         st.metric("📦 Средний остаток", f"{data.get('avg_stock', 0):.1f} кг")
+    
+    # ========== СТАТИСТИКА ПО СИМУЛЯЦИЯМ (если их несколько) ==========
+    if num_simulations > 1 and 'stats' in data:
+        st.markdown("---")
+        st.subheader("📊 Статистика по результатам симуляций")
+        
+        stats = data['stats']
+        
+        stats_df = pd.DataFrame([
+            {'Метрика': 'Выручка (руб)', 
+             'Минимум': f"{stats['revenue']['min']:,.0f}",
+             'Среднее': f"{stats['revenue']['avg']:,.0f}",
+             'Максимум': f"{stats['revenue']['max']:,.0f}"},
+            
+            {'Метрика': 'Прибыль (руб)', 
+             'Минимум': f"{stats['profit']['min']:,.0f}",
+             'Среднее': f"{stats['profit']['avg']:,.0f}",
+             'Максимум': f"{stats['profit']['max']:,.0f}"},
+            
+            {'Метрика': 'Затраты (руб)', 
+             'Минимум': f"{stats['cost']['min']:,.0f}",
+             'Среднее': f"{stats['cost']['avg']:,.0f}",
+             'Максимум': f"{stats['cost']['max']:,.0f}"},
+            
+            {'Метрика': 'Потери (кг)', 
+             'Минимум': f"{stats['spoilage']['min']:.1f}",
+             'Среднее': f"{stats['spoilage']['avg']:.1f}",
+             'Максимум': f"{stats['spoilage']['max']:.1f}"},
+            
+            {'Метрика': 'Средний остаток (кг)', 
+             'Минимум': f"{stats['avg_stock']['min']:.1f}",
+             'Среднее': f"{stats['avg_stock']['avg']:.1f}",
+             'Максимум': f"{stats['avg_stock']['max']:.1f}"},
+            
+            {'Метрика': 'Неудовлетворённый спрос (кг)', 
+             'Минимум': f"{stats.get('unmet_demand', {}).get('min', 0):.0f}",
+             'Среднее': f"{stats.get('unmet_demand', {}).get('avg', 0):.0f}",
+             'Максимум': f"{stats.get('unmet_demand', {}).get('max', 0):.0f}"},
+        ])
+        
+        st.dataframe(stats_df, hide_index=True, use_container_width=True)
     
     # ========== ПОДГОТОВКА ДАННЫХ ==========
     df = pd.DataFrame(data['daily_history'])
