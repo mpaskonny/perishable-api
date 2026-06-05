@@ -11,7 +11,6 @@ from database.db_manager import DatabaseManager
 
 def run_multiple_simulations(params, num_simulations, API_URL, days):
     """Запускает несколько симуляций и возвращает усреднённые результаты + статистику"""
-    
     all_daily_histories = []
     all_metrics = []
     
@@ -65,7 +64,7 @@ def run_multiple_simulations(params, num_simulations, API_URL, days):
             'unmet_demand': {'min': min(unmet_demands), 'max': max(unmet_demands), 'avg': np.mean(unmet_demands)}
         }
     }
-    
+
     # Усредняем дневные данные
     avg_daily_history = []
     for day_idx in range(days):
@@ -111,7 +110,10 @@ def run_multiple_simulations(params, num_simulations, API_URL, days):
     avg_metrics['demand_stats'] = all_metrics[0].get('demand_stats', {}) if all_metrics else {}
     avg_metrics['spoilage_stats'] = all_metrics[0].get('spoilage_stats', {}) if all_metrics else {}
     
+    
+    avg_metrics['daily_history'] = avg_daily_history
     return avg_metrics
+
 
 
 def show(settings_dialog=None):
@@ -292,8 +294,7 @@ def show(settings_dialog=None):
                 start_date = datetime.fromisoformat(real_start_date)
                 days = len(real_demand_dates)
             else:
-                start_date = datetime(2026, 2, 1)
-                days = 30
+                pass
             
             if strategy_type == "r_s":
                 min_stock = min_stock_setting
@@ -371,7 +372,6 @@ def show(settings_dialog=None):
             
             try:
                 if num_simulations > 1:
-                    data = run_multiple_simulations(params, num_simulations, API_URL, days)
                     if data is None:
                         return
                     # ПЕРЕСЧИТЫВАЕМ total_unmet из усреднённых данных
@@ -412,7 +412,7 @@ def display_simulation_results(results):
     """Отображает результаты симуляции"""
     if results is None:
         return
-    
+
     data = results['data']
     total_unmet = results['total_unmet']
     params = results['params']
