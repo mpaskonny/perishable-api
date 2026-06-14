@@ -141,7 +141,6 @@ def view_experiment_dialog(experiment_data: dict, db):
     
     with col_btn2:
         if st.button("❌ Закрыть", use_container_width=True):
-            # Очищаем состояние диалога
             st.session_state.show_view_dialog = False
             st.session_state.view_experiment_data = None
             st.rerun()
@@ -160,7 +159,6 @@ def confirm_delete_experiment(exp_id: int, exp_name: str, db):
             try:
                 db.delete_experiment(exp_id)
                 st.success(f"✅ Эксперимент #{exp_id} удалён!")
-                # Очищаем состояние удаления
                 st.session_state.show_delete_modal = False
                 st.session_state.delete_exp_id = None
                 st.session_state.delete_exp_name = None
@@ -178,34 +176,24 @@ def confirm_delete_experiment(exp_id: int, exp_name: str, db):
 def show():
     """Страница управления базой данных"""
     
+    # СБРАСЫВАЕМ ФЛАГИ ТОЛЬКО ПРИ ПЕРВОМ ЗАПУСКЕ
+    if 'db_page_initialized' not in st.session_state:
+        st.session_state.db_page_initialized = True
+        st.session_state.show_add_modal = False
+        st.session_state.show_edit_modal = False
+        st.session_state.show_delete_modal = False
+        st.session_state.show_clear_modal = False
+        st.session_state.show_view_dialog = False
+        st.session_state.view_experiment_data = None
+        st.session_state.delete_exp_id = None
+        st.session_state.delete_exp_name = None
+        st.session_state.editing_product = None
+        st.session_state.delete_product_name = None
+        st.session_state.delete_product_id = None
+    
     if 'db_manager' not in st.session_state:
         st.session_state.db_manager = DatabaseManager()
     db = st.session_state.db_manager
-    
-    # Инициализация состояния для модальных окон
-    if 'show_add_modal' not in st.session_state:
-        st.session_state.show_add_modal = False
-    if 'show_edit_modal' not in st.session_state:
-        st.session_state.show_edit_modal = False
-    if 'show_delete_modal' not in st.session_state:
-        st.session_state.show_delete_modal = False
-    if 'show_clear_modal' not in st.session_state:
-        st.session_state.show_clear_modal = False
-    if 'show_view_dialog' not in st.session_state:
-        st.session_state.show_view_dialog = False
-    if 'view_experiment_data' not in st.session_state:
-        st.session_state.view_experiment_data = None
-    if 'delete_exp_id' not in st.session_state:
-        st.session_state.delete_exp_id = None
-    if 'delete_exp_name' not in st.session_state:
-        st.session_state.delete_exp_name = None
-    if 'editing_product' not in st.session_state:
-        st.session_state.editing_product = None
-    if 'delete_product_name' not in st.session_state:
-        st.session_state.delete_product_name = None
-    if 'delete_product_id' not in st.session_state:
-        st.session_state.delete_product_id = None
-
     
     tab1, tab2 = st.tabs(["📦 Товары", "📊 История экспериментов"])
     
@@ -216,10 +204,6 @@ def show():
         col1, col2 = st.columns([6, 1])
         with col2:
             if st.button("➕ Добавить товар", type="primary", use_container_width=True):
-                st.session_state.show_edit_modal = False
-                st.session_state.show_delete_modal = False
-                st.session_state.show_clear_modal = False
-                st.session_state.show_view_dialog = False
                 st.session_state.show_add_modal = True
         
         products_df = db.get_all_products()
@@ -263,10 +247,6 @@ def show():
                     st.write(f"{row['base_demand']:.0f} ед/день")
                 with col7:
                     if st.button("✏️", key=f"edit_{row['id_product']}", help="Редактировать"):
-                        st.session_state.show_add_modal = False
-                        st.session_state.show_delete_modal = False
-                        st.session_state.show_clear_modal = False
-                        st.session_state.show_view_dialog = False
                         st.session_state.editing_product = {
                             'id_product': row['id_product'],
                             'name': row['name'],
@@ -279,10 +259,6 @@ def show():
                         st.session_state.show_edit_modal = True
                 with col8:
                     if st.button("🗑️", key=f"delete_{row['id_product']}", help="Удалить"):
-                        st.session_state.show_add_modal = False
-                        st.session_state.show_edit_modal = False
-                        st.session_state.show_clear_modal = False
-                        st.session_state.show_view_dialog = False
                         st.session_state.delete_product_name = row['name']
                         st.session_state.delete_product_id = row['id_product']
                         st.session_state.show_delete_modal = True
@@ -298,61 +274,27 @@ def show():
         col1, col2 = st.columns([4, 1])
         with col2:
             if st.button("🗑️ Очистить всё", type="secondary", use_container_width=True):
-                st.session_state.show_add_modal = False
-                st.session_state.show_edit_modal = False
-                st.session_state.show_delete_modal = False
-                st.session_state.show_view_dialog = False
                 st.session_state.show_clear_modal = True
         
         exp_df = db.get_all_experiments()
         
         if not exp_df.empty:
-            # Заголовки таблицы
-            col1, col2, col3, col4, col5, col6, col7, col8, col9, col10, col11 = st.columns(
-                [0.5, 1.2, 1.0, 1.0, 1.0, 0.8, 0.8, 0.8, 1.0, 0.5, 0.5]
-            )
-            with col1:
-                st.write("**ID**")
-            with col2:
-                st.write("**Товар**")
-            with col3:
-                st.write("**Стратегия**")
-            with col4:
-                st.write("**Прибыль**")
-            with col5:
-                st.write("**Выручка**")
-            with col6:
-                st.write("**Затраты**")
-            with col7:
-                st.write("**Потери**")
-            with col8:
-                st.write("**Неуд.спрос**")
-            with col9:
-                st.write("**Дата**")
-            with col10:
-                st.write("")
-            with col11:
-                st.write("")
-            
-            st.divider()
-            
+            # Простая таблица без лишних колонок
             for idx, row in exp_df.iterrows():
-                col1, col2, col3, col4, col5, col6, col7, col8, col9, col10, col11 = st.columns(
-                    [0.5, 1.2, 1.0, 1.0, 1.0, 0.8, 0.8, 0.8, 1.0, 0.5, 0.5]
-                )
+                # Создаём строку с кнопками
+                col1, col2, col3, col4, col5, col6, col7, col8, col9 = st.columns([0.5, 1.5, 1.0, 1.0, 1.0, 0.8, 0.8, 0.5, 0.5])
                 
                 with col1:
                     st.write(f"{row['id_experiment']}")
                 with col2:
                     st.write(f"{row['product_name'][:20]}")
                 with col3:
-                    strategy = row.get('strategy_type', 'r_s')
                     strategy_short = {
                         "r_s": "(R,S)",
                         "r_q": "(R,Q)",
                         "s_s": "(s,S)",
                         "s_q": "(s,Q)"
-                    }.get(strategy, strategy)
+                    }.get(row.get('strategy_type', 'r_s'), row.get('strategy_type', '-'))
                     st.write(strategy_short)
                 with col4:
                     profit = row.get('profit', 0)
@@ -365,33 +307,16 @@ def show():
                 with col7:
                     st.write(f"{row.get('total_spoilage_kg', 0):.1f}")
                 with col8:
-                    st.write(f"{row.get('total_unmet_demand', 0):.0f}")
-                with col9:
-                    created = row.get('created_at', '')
-                    if created:
-                        try:
-                            if isinstance(created, str):
-                                created = datetime.strptime(created, '%Y-%m-%d %H:%M:%S')
-                            st.write(created.strftime('%d.%m.%Y'))
-                        except:
-                            st.write(str(created)[:10])
-                    else:
-                        st.write("-")
-                with col10:
+                    # Кнопка просмотра
                     if st.button("📊", key=f"view_{row['id_experiment']}", help="Просмотреть детали"):
-                        exp_data = db.get_full_experiment_data(row['id_experiment'])
-                        if exp_data:
-                            st.session_state.show_view_dialog = True
-                            st.session_state.view_experiment_data = exp_data
-                            st.rerun()
-                        else:
-                            st.error("❌ Не удалось загрузить данные эксперимента")
-                with col11:
-                    if st.button("🗑️", key=f"del_exp_{row['id_experiment']}", help="Удалить эксперимент"):
-                        st.session_state.show_view_dialog = False
-                        st.session_state.view_experiment_data = None
-                        st.session_state.delete_exp_id = row['id_experiment']
-                        st.session_state.delete_exp_name = row['product_name']
+                        st.session_state.view_exp_id = row['id_experiment']
+                        st.session_state.show_view_dialog = True
+                        st.rerun()
+                with col9:
+                    # Кнопка удаления
+                    if st.button("🗑️", key=f"del_{row['id_experiment']}", help="Удалить эксперимент"):
+                        st.session_state.del_exp_id = row['id_experiment']
+                        st.session_state.del_exp_name = row['product_name']
                         st.session_state.show_delete_modal = True
                         st.rerun()
                 
@@ -404,19 +329,31 @@ def show():
     # ========== ВЫЗОВ МОДАЛЬНЫХ ОКОН ==========
     
     # Модальное окно просмотра эксперимента
-    if st.session_state.get('show_view_dialog', False) and st.session_state.get('view_experiment_data'):
-        view_experiment_dialog(st.session_state.view_experiment_data, db)
+    if st.session_state.get('show_view_dialog', False):
+        exp_id = st.session_state.get('view_exp_id')
+        if exp_id:
+            exp_data = db.get_full_experiment_data(exp_id)
+            if exp_data:
+                view_experiment_dialog(exp_data, db)
+            else:
+                st.error("❌ Не удалось загрузить данные эксперимента")
+        # Сбрасываем флаг после отображения диалога
+        st.session_state.show_view_dialog = False
+        st.session_state.view_exp_id = None
     
     # Модальное окно удаления эксперимента
-    if st.session_state.get('show_delete_modal', False):
+    elif st.session_state.get('show_delete_modal', False):
         confirm_delete_experiment(
-            st.session_state.delete_exp_id,
-            st.session_state.delete_exp_name,
+            st.session_state.del_exp_id,
+            st.session_state.del_exp_name,
             db
         )
+        st.session_state.show_delete_modal = False
+        st.session_state.del_exp_id = None
+        st.session_state.del_exp_name = None
     
     # Остальные модальные окна
-    if st.session_state.get('show_add_modal', False):
+    elif st.session_state.get('show_add_modal', False):
         add_product_modal()
     elif st.session_state.get('show_edit_modal', False) and st.session_state.get('editing_product'):
         edit_product_modal()

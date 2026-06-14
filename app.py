@@ -10,6 +10,12 @@ st.set_page_config(
     layout="wide"
 )
 
+# Сброс всех флагов модальных окон при загрузке приложения
+if 'flags_reset' not in st.session_state:
+    for flag in ['show_add_modal', 'show_edit_modal', 'show_delete_modal', 
+                 'show_clear_modal', 'show_view_dialog']:
+        st.session_state[flag] = False
+    st.session_state.flags_reset = True
 
 # Загрузка стилей
 with open("styles.css", "r", encoding="utf-8") as f:

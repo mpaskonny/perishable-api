@@ -445,6 +445,12 @@ def save_complete_experiment(results, params, daily_history_df, db):
 def show(settings_dialog=None):
     """Страница симуляции"""
     
+    if 'simulation_started' not in st.session_state:
+        st.session_state.show_add_modal = False
+        st.session_state.show_edit_modal = False
+        st.session_state.show_clear_modal = False
+        st.session_state.simulation_started = True
+
     API_URL = "http://127.0.0.1:8000"
     db = DatabaseManager()
     
@@ -580,6 +586,14 @@ def show(settings_dialog=None):
     st.markdown("---")
     
     if st.button("🚀 Запустить симуляцию", type="primary", use_container_width=True):
+        st.session_state.show_view_dialog = False
+        st.session_state.show_delete_modal = False
+        st.session_state.show_add_modal = False
+        st.session_state.show_edit_modal = False
+        st.session_state.show_clear_modal = False
+        st.session_state.view_experiment_data = None
+        st.session_state.delete_exp_id = None
+        st.session_state.delete_exp_name = None
         with st.spinner("Симуляция выполняется..."):
             settings = st.session_state.get('settings', {})
             
@@ -859,7 +873,7 @@ def display_simulation_results(results, db):
     fig2.add_trace(go.Scatter(x=df['day'], y=df['end_stock'], name='Остаток на конец дня',
                               line=dict(color='#2ECC71', width=3)))
     fig2.add_hline(y=min_stock, line_dash="dash", line_color="red", 
-                   annotation_text=f"Min запас: {min_stock}")
+                   annotation_text=f"Мин. запас: {min_stock}")
     fig2.update_layout(template='plotly_white', xaxis_title="День", yaxis_title="Остаток (кг/шт)")
     st.plotly_chart(fig2, use_container_width=True)
     
@@ -883,21 +897,50 @@ def display_simulation_results(results, db):
     
     col_hist1, col_hist2 = st.columns(2)
     with col_hist1:
-        fig_hist = px.histogram(df, x='demand', nbins=15, title="Распределение спроса",
-                                labels={'demand': 'Спрос'}, template='plotly_white')
-        fig_hist.add_vline(x=df['demand'].mean(), line_dash="dash", line_color="red",
-                          annotation_text=f"Среднее: {df['demand'].mean():.2f}")
+        fig_hist = px.histogram(
+            df, 
+            x='demand', 
+            nbins=15, 
+            title="Распределение спроса",
+            labels={'demand': 'Спрос (кг/шт)', 'count': 'Частота'},  
+            template='plotly_white'
+        )
+        # Обновляем подсказки при наведении
+        fig_hist.update_traces(
+            hovertemplate='<b>Спрос</b>: %{x:.1f} кг/шт<br><b>Частота</b>: %{y} д.<extra></extra>'
+        )
+        fig_hist.add_vline(
+            x=df['demand'].mean(), 
+            line_dash="dash", 
+            line_color="red",
+            annotation_text=f"Среднее: {df['demand'].mean():.2f}"
+        )
+        fig_hist.update_layout(
+            xaxis_title="Спрос (кг/шт)",
+            yaxis_title="Частота (количество дней)"
+        )
         st.plotly_chart(fig_hist, use_container_width=True)
-    
+
     with col_hist2:
         if product_category == "strict" and 'spoilage_stats' in data:
             fifo_rates = data['spoilage_stats'].get('fifo_rates', [])
             if fifo_rates:
-                fig_fifo = px.histogram(x=fifo_rates, nbins=15, 
-                                        title=f"FIFO (ожидаемый {fifo_percent}%)",
-                                        labels={'x': 'Процент покупателей (%)'}, 
-                                        template='plotly_white')
+                fig_fifo = px.histogram(
+                    x=fifo_rates, 
+                    nbins=15, 
+                    title=f"Распределение FIFO (ожидаемый {fifo_percent}%)",
+                    labels={'x': 'Процент FIFO покупателей (%)', 'count': 'Частота'},  
+                    template='plotly_white'
+                )
+                # Обновляем подсказки при наведении
+                fig_fifo.update_traces(
+                    hovertemplate='<b>FIFO</b>: %{x:.1f}%<br><b>Частота</b>: %{y} дней<extra></extra>'
+                )
                 fig_fifo.add_vline(x=fifo_percent, line_dash="dash", line_color="red")
+                fig_fifo.update_layout(
+                    xaxis_title="Процент FIFO покупателей (%)",
+                    yaxis_title="Частота (количество дней)"
+                )
                 st.plotly_chart(fig_fifo, use_container_width=True)
     
     # Возрастная структура для gradual продуктов
