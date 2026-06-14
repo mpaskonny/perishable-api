@@ -6,6 +6,7 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import numpy as np
 import os
+from io import BytesIO
 from database.db_manager import DatabaseManager
 
 
@@ -54,7 +55,6 @@ def run_multiple_simulations(params, num_simulations, API_URL, days):
         'avg_stock': np.mean(avg_stocks),
         'std_profit': np.std(profits),
         'num_simulations': len(all_metrics),
-        # Статистика для отображения
         'stats': {
             'revenue': {'min': min(revenues), 'max': max(revenues), 'avg': np.mean(revenues)},
             'profit': {'min': min(profits), 'max': max(profits), 'avg': np.mean(profits)},
@@ -70,7 +70,6 @@ def run_multiple_simulations(params, num_simulations, API_URL, days):
     for day_idx in range(days):
         day_avg = {}
         
-        # Числовые поля
         for key in ['demand', 'start_stock', 'sales', 'spoilage', 'order', 'revenue', 'purchase_cost', 'end_stock', 'unmet_demand']:
             values = []
             for hist in all_daily_histories:
@@ -78,19 +77,14 @@ def run_multiple_simulations(params, num_simulations, API_URL, days):
                     values.append(hist[day_idx].get(key, 0))
             day_avg[key] = np.mean(values) if values else 0
         
-        # Поля, которые могут быть None
         for key in ['stock_week1', 'stock_week2', 'stock_week3']:
             values = []
             for hist in all_daily_histories:
                 if day_idx < len(hist):
                     val = hist[day_idx].get(key, 0)
-                    if val is not None:
-                        values.append(val)
-                    else:
-                        values.append(0)
+                    values.append(val if val is not None else 0)
             day_avg[key] = np.mean(values) if values else 0
         
-        # Поля для строгих товаров
         for key in ['fifo_percent', 'lifo_percent']:
             values = []
             for hist in all_daily_histories:
@@ -100,7 +94,6 @@ def run_multiple_simulations(params, num_simulations, API_URL, days):
                         values.append(val)
             day_avg[key] = np.mean(values) if values else None
         
-        # Базовые поля
         day_avg['day'] = day_idx + 1
         day_avg['date'] = all_daily_histories[0][day_idx]['date'] if all_daily_histories else ""
         
@@ -110,10 +103,343 @@ def run_multiple_simulations(params, num_simulations, API_URL, days):
     avg_metrics['demand_stats'] = all_metrics[0].get('demand_stats', {}) if all_metrics else {}
     avg_metrics['spoilage_stats'] = all_metrics[0].get('spoilage_stats', {}) if all_metrics else {}
     
-    
-    avg_metrics['daily_history'] = avg_daily_history
     return avg_metrics
 
+
+def export_experiment_to_excel(db, id_experiment: int) -> BytesIO:
+    """Выгружает эксперимент из БД в многостраничный Excel с русскими названиями"""
+    
+    data = db.get_full_experiment_data(id_experiment)
+    if not data:
+        return None
+    
+    settings = data['settings']
+    experiment = data['experiment']
+    daily_history = data['daily_history']
+    
+    output = BytesIO()
+    
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        
+        # ========== ЛИСТ 1: МЕТРИКИ ==========
+        metrics_data = {
+            'Показатель': [
+                'ID эксперимента',
+                'Товар',
+                'Категория',
+                'Стратегия поставок',
+                'Дата сохранения',
+                '',
+                'Выручка (руб)',
+                'Затраты на закупку (руб)',
+                'Затраты на доставку (руб)',
+                'Затраты на утилизацию (руб)',
+                'Итого затраты (руб)',
+                'Прибыль (руб)',
+                '',
+                'Потери от порчи (кг)',
+                'Потери от порчи (руб)',
+                'Неудовлетворённый спрос (кг)',
+                'Средний остаток (кг)'
+            ],
+            'Значение': [
+                id_experiment,
+                settings.get('product_name'),
+                "Строгий срок" if settings.get('product_category') == 'strict' else "Постепенная порча",
+                settings.get('strategy_type'),
+                experiment.get('created_at', ''),
+                '',
+                f"{experiment.get('total_revenue', 0):.2f}",
+                f"{experiment.get('total_purchase_cost', 0):.2f}",
+                f"{experiment.get('total_delivery_cost', 0):.2f}",
+                f"{experiment.get('total_utilization_cost', 0):.2f}",
+                f"{experiment.get('total_cost', 0):.2f}",
+                f"{experiment.get('profit', 0):.2f}",
+                '',
+                f"{experiment.get('total_spoilage_kg', 0):.2f}",
+                f"{experiment.get('total_spoilage_money', 0):.2f}",
+                f"{experiment.get('total_unmet_demand', 0):.2f}",
+                f"{experiment.get('avg_stock', 0):.2f}"
+            ]
+        }
+        pd.DataFrame(metrics_data).to_excel(writer, sheet_name='Метрики', index=False)
+        
+        # ========== ЛИСТ 2: НАСТРОЙКИ (ВКЛАДКА 1 - ОБЩИЕ) ==========
+        # Преобразуем weekday_factors
+        weekday_factors = settings.get('weekday_factors', [0.8, 0.6, 0.9, 1.0, 1.3, 1.5, 1.1])
+        if isinstance(weekday_factors, str):
+            import json
+            weekday_factors = json.loads(weekday_factors)
+        
+        general_settings = {
+            'Параметр': [
+                'Товар',
+                'Категория',
+                'Цена закупки (руб)',
+                'Цена продажи (руб)',
+                'Срок годности (дней)',
+                'Базовый спрос (ед/день)',
+                '',
+                'Закон распределения спроса',
+                'Мин. спрос (равномерный)',
+                'Макс. спрос (равномерный)',
+                'Сигма (нормальный)',
+                '',
+                'Коэффициенты дней недели (Пн)',
+                'Коэффициенты дней недели (Вт)',
+                'Коэффициенты дней недели (Ср)',
+                'Коэффициенты дней недели (Чт)',
+                'Коэффициенты дней недели (Пт)',
+                'Коэффициенты дней недели (Сб)',
+                'Коэффициенты дней недели (Вс)',
+                '',
+                'Тип порчи',
+                'Степень p (для степенной)',
+                'Коэффициент k (для логистической)',
+                '',
+                'FIFO / LIFO',
+                'Стоимость утилизации (руб/кг)',
+                '',
+                'Период симуляции (дней)',
+                'Дата начала',
+                'Дата окончания',
+                'Количество прогонов (усреднение)',
+                'Seed (воспроизводимость)'
+            ],
+            'Значение': [
+                settings.get('product_name'),
+                "Строгий срок" if settings.get('product_category') == 'strict' else "Постепенная порча",
+                settings.get('purchase_price'),
+                settings.get('sale_price'),
+                settings.get('shelf_life_days'),
+                settings.get('base_demand'),
+                '',
+                "Нормальный" if settings.get('distribution') == 'normal' else "Равномерный",
+                settings.get('demand_min') if settings.get('demand_min') else "—",
+                settings.get('demand_max') if settings.get('demand_max') else "—",
+                settings.get('demand_sigma') if settings.get('demand_sigma') else "—",
+                '',
+                weekday_factors[0] if len(weekday_factors) > 0 else 0.8,
+                weekday_factors[1] if len(weekday_factors) > 1 else 0.6,
+                weekday_factors[2] if len(weekday_factors) > 2 else 0.9,
+                weekday_factors[3] if len(weekday_factors) > 3 else 1.0,
+                weekday_factors[4] if len(weekday_factors) > 4 else 1.3,
+                weekday_factors[5] if len(weekday_factors) > 5 else 1.5,
+                weekday_factors[6] if len(weekday_factors) > 6 else 1.1,
+                '',
+                settings.get('spoilage_type'),
+                settings.get('power_p') if settings.get('power_p') else "—",
+                settings.get('logistic_k') if settings.get('logistic_k') else "—",
+                '',
+                f"{settings.get('fifo_percent')}% FIFO / {100 - settings.get('fifo_percent', 75)}% LIFO" if settings.get('fifo_percent') else "—",
+                settings.get('utilization_price') if settings.get('utilization_price') else 0,
+                '',
+                settings.get('days'),
+                settings.get('start_date'),
+                settings.get('end_date'),
+                settings.get('num_simulations', 1),
+                settings.get('random_seed', '—')
+            ]
+        }
+        pd.DataFrame(general_settings).to_excel(writer, sheet_name='1. Общие настройки', index=False)
+        
+        # ========== ЛИСТ 3: НАСТРОЙКИ (ВКЛАДКА 2 - СТРАТЕГИЯ ПОСТАВОК) ==========
+        # Преобразуем delivery_days
+        delivery_days = settings.get('delivery_days', [])
+        if isinstance(delivery_days, str):
+            import json
+            delivery_days = json.loads(delivery_days)
+        
+        day_names = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+        delivery_days_str = ", ".join([day_names[d] for d in delivery_days if d < 7]) if delivery_days else "—"
+        
+        strategy_names = {
+            "r_s": "(R, S) — Периодическая до целевого уровня",
+            "r_q": "(R, Q) — Фиксированный объём по расписанию",
+            "s_s": "(s, S) — Двухуровневая (точка заказа)",
+            "s_q": "(s, Q) — Двухуровневая с фиксированным объёмом",
+            "custom": "Пользовательская"
+        }
+        
+        schedule_names = {
+            "frequency": "Периодичность (каждые N дней)",
+            "days": "Конкретные дни недели"
+        }
+        
+        delivery_settings = {
+            'Параметр': [
+                'Стратегия поставок',
+                '',
+                'Способ поставки',
+                'Размер упаковки (кг/шт)',
+                'Фиксированный объём заказа Q',
+                '',
+                'Тип расписания',
+                'Периодичность (дней)',
+                'Дни поставок',
+                '',
+                'Точка заказа s',
+                'Максимальный запас S',
+                'Целевой уровень запаса'
+            ],
+            'Значение': [
+                strategy_names.get(settings.get('strategy_type', 'r_s'), settings.get('strategy_type')),
+                '',
+                "Коробками/ящиками" if settings.get('delivery_type') == 'box' else "Штучно" if settings.get('delivery_type') == 'unit' else "Фиксированный",
+                settings.get('box_size', 0) if settings.get('box_size', 0) > 0 else "—",
+                settings.get('fixed_quantity') if settings.get('fixed_quantity') else "—",
+                '',
+                schedule_names.get(settings.get('schedule_type'), "—") if settings.get('schedule_type') else "—",
+                settings.get('delivery_frequency') if settings.get('delivery_frequency') else "—",
+                delivery_days_str,
+                '',
+                settings.get('reorder_point') if settings.get('reorder_point') else "—",
+                settings.get('max_stock') if settings.get('max_stock') else "—",
+                settings.get('min_stock') if settings.get('min_stock') else "—"
+            ]
+        }
+        pd.DataFrame(delivery_settings).to_excel(writer, sheet_name='2. Стратегия поставок', index=False)
+        
+        # ========== ЛИСТ 4: НАСТРОЙКИ (ВКЛАДКА 3 - ДОСТАВКА) ==========
+        cost_type_names = {
+            "none": "Не учитывать",
+            "fixed": "Фиксированная (за одну поставку)",
+            "rate": "Тариф за кг/шт",
+            "combined": "Комбинированная (фикс + тариф)"
+        }
+        
+        delivery_cost_settings = {
+            'Параметр': [
+                'Тип расчёта доставки',
+                'Фиксированная стоимость (руб)',
+                'Тариф за кг/шт (руб)',
+                '',
+                'Пример расчёта (при заказе 100 кг)'
+            ],
+            'Значение': [
+                cost_type_names.get(settings.get('delivery_cost_type', 'none'), "Не учитывать"),
+                settings.get('delivery_fixed_cost', 0) if settings.get('delivery_cost_type') in ['fixed', 'combined'] else "—",
+                settings.get('delivery_rate_cost', 0) if settings.get('delivery_cost_type') in ['rate', 'combined'] else "—",
+                '',
+                f"{settings.get('delivery_fixed_cost', 0) + settings.get('delivery_rate_cost', 0) * 100:.2f} руб" if settings.get('delivery_cost_type') != 'none' else "—"
+            ]
+        }
+        pd.DataFrame(delivery_cost_settings).to_excel(writer, sheet_name='3. Доставка', index=False)
+        
+        # ========== ЛИСТ 5: ДЕТАЛЬНАЯ ИСТОРИЯ ПО ДНЯМ (РУССКИЕ КОЛОНКИ) ==========
+        if not daily_history.empty:
+            # Переименовываем колонки на русские
+            column_names_ru = {
+                'day': 'День',
+                'date': 'Дата',
+                'demand': 'Спрос',
+                'start_stock': 'Остаток на начало',
+                'sales': 'Продажи',
+                'spoilage_kg': 'Порча',
+                'order_qty': 'Поставка',
+                'revenue': 'Выручка (руб)',
+                'purchase_cost': 'Затраты на закупку (руб)',
+                'end_stock': 'Остаток на конец',
+                'unmet_demand': 'Неудовлетворённый спрос',
+                'fifo_percent': 'FIFO (%)',
+                'lifo_percent': 'LIFO (%)',
+                'stock_week1': 'Остаток 0-7 дней',
+                'stock_week2': 'Остаток 8-14 дней',
+                'stock_week3': 'Остаток 15+ дней'
+            }
+            
+            # Переименовываем только существующие колонки
+            daily_history_ru = daily_history.rename(columns={k: v for k, v in column_names_ru.items() if k in daily_history.columns})
+            daily_history_ru.to_excel(writer, sheet_name='Детально по дням', index=False)
+    
+    output.seek(0)
+    return output
+
+
+def save_complete_experiment(results, params, daily_history_df, db):
+    """Сохраняет эксперимент целиком: настройки + метрики + история по дням"""
+    
+    import random
+    
+    # Получаем id_product
+    id_product = db.get_product_id_by_name(results['selected_product_name'])
+    
+    # Генерируем seed
+    random_seed = random.randint(1, 1000000)
+    
+    # Определяем даты
+    start_date = params.get('start_date')
+    end_date = None
+    if start_date and results.get('days'):
+        start_dt = datetime.fromisoformat(start_date) if isinstance(start_date, str) else start_date
+        end_dt = start_dt + timedelta(days=results['days'] - 1)
+        end_date = end_dt.strftime('%Y-%m-%d')
+        start_date = start_dt.strftime('%Y-%m-%d')
+    
+    # 1. Сохраняем настройки
+    settings = {
+        'id_product': id_product,
+        'product_name': results['selected_product_name'],
+        'purchase_price': params.get('purchase_price'),
+        'sale_price': params.get('sale_price'),
+        'shelf_life_days': params.get('shelf_life_days'),
+        'base_demand': params.get('base_demand', 100),
+        'product_category': results['product_category'],
+        'distribution': params.get('distribution', 'uniform'),
+        'demand_min': params.get('demand_min'),
+        'demand_max': params.get('demand_max'),
+        'demand_sigma': params.get('demand_sigma'),
+        'weekday_factors': params.get('weekday_factors', [0.8, 0.6, 0.9, 1.0, 1.3, 1.5, 1.1]),
+        'spoilage_type': params.get('spoilage_type', 'linear'),
+        'power_p': params.get('power_p'),
+        'logistic_k': params.get('logistic_k'),
+        'strategy_type': params.get('strategy_type', 'r_s'),
+        'delivery_type': params.get('delivery_type', 'unit'),
+        'box_size': params.get('box_size', 0),
+        'fixed_quantity': params.get('fixed_quantity'),
+        'schedule_type': params.get('schedule_type'),
+        'delivery_frequency': params.get('delivery_frequency'),
+        'delivery_days': params.get('delivery_days', []),
+        'reorder_point': params.get('reorder_point'),
+        'max_stock': params.get('max_stock'),
+        'min_stock': params.get('min_stock'),
+        'delivery_cost_type': params.get('delivery_cost_type', 'none'),
+        'delivery_fixed_cost': params.get('delivery_fixed_cost', 0),
+        'delivery_rate_cost': params.get('delivery_rate_cost', 0),
+        'fifo_percent': params.get('fifo_percent'),
+        'utilization_price': params.get('utilization_price', 0),
+        'days': results['days'],
+        'start_date': start_date,
+        'end_date': end_date,
+        'num_simulations': results.get('num_simulations', 1),
+        'random_seed': random_seed
+    }
+    
+    id_setting = db.save_settings(settings)
+    
+    # 2. Сохраняем метрики
+    data = results['data']
+    experiment_data = {
+        'id_setting': id_setting,
+        'total_revenue': data['total_revenue'],
+        'total_cost': data['total_cost'],
+        'total_purchase_cost': data.get('total_purchase_cost', 0),
+        'total_delivery_cost': data.get('total_delivery_cost', 0),
+        'total_utilization_cost': data.get('total_utilization_cost', 0),
+        'total_spoilage_kg': data['total_spoilage_kg'],
+        'total_spoilage_money': data['total_spoilage_money'],
+        'profit': data['profit'],
+        'avg_stock': data.get('avg_stock', 0),
+        'total_unmet_demand': results['total_unmet']
+    }
+    
+    id_experiment = db.save_experiment(experiment_data)
+    
+    # 3. Сохраняем историю по дням
+    daily_list = daily_history_df.to_dict('records')
+    db.save_daily_history_batch(id_experiment, daily_list)
+    
+    return id_experiment
 
 
 def show(settings_dialog=None):
@@ -138,7 +464,6 @@ def show(settings_dialog=None):
     col_product, col_settings = st.columns([5, 1])
     
     with col_product:
-        # Выбор товара
         selected_product_name = st.selectbox(
             "📦 Выберите продукт",
             options=products_df['name'].tolist(),
@@ -154,7 +479,6 @@ def show(settings_dialog=None):
     selected_product = products_df[products_df['name'] == selected_product_name].iloc[0]
     product_category = selected_product['category']
     
-    # ========== СОХРАНЯЕМ ПАРАМЕТРЫ В SESSION_STATE ==========
     st.session_state.current_base_demand = selected_product['base_demand']
     st.session_state.current_product_category = product_category
     
@@ -179,7 +503,6 @@ def show(settings_dialog=None):
     # ========== ДВА КОНТЕЙНЕРА РЯДОМ ==========
     col_left, col_right = st.columns(2)
     
-    # ===== ЛЕВЫЙ КОНТЕЙНЕР: Информация о товаре =====
     with col_left:
         st.subheader("📋 Информация о товаре")
         
@@ -195,7 +518,6 @@ def show(settings_dialog=None):
         with row2_col2:
             st.metric("📊 Базовый спрос", f"{selected_product['base_demand']:.0f} ед/день")
     
-    # ===== ПРАВЫЙ КОНТЕЙНЕР: Краткая сводка настроек =====
     with col_right:
         st.subheader("⚙️ Текущие настройки")
         
@@ -254,7 +576,6 @@ def show(settings_dialog=None):
         else:
             st.markdown(f"**💰 Доставка:** Фикс {settings.get('delivery_fixed_cost', 200):.0f} + {settings.get('delivery_rate_cost', 3):.0f} руб/кг")
     
-    
     # ========== КНОПКА ЗАПУСКА ==========
     st.markdown("---")
     
@@ -262,7 +583,6 @@ def show(settings_dialog=None):
         with st.spinner("Симуляция выполняется..."):
             settings = st.session_state.get('settings', {})
             
-            # Получаем параметры
             distribution = settings.get('distribution', 'uniform')
             demand_min = settings.get('demand_min')
             demand_max = settings.get('demand_max')
@@ -293,8 +613,6 @@ def show(settings_dialog=None):
             if use_real_demand and real_start_date and real_demand_dates:
                 start_date = datetime.fromisoformat(real_start_date)
                 days = len(real_demand_dates)
-            else:
-                pass
             
             if strategy_type == "r_s":
                 min_stock = min_stock_setting
@@ -324,7 +642,7 @@ def show(settings_dialog=None):
                 final_max_stock = None
                 final_delivery_type = delivery_type
                 final_box_size = box_size
-            else:  # custom
+            else:
                 min_stock = min_stock_setting
                 final_fixed_quantity = fixed_quantity
                 final_reorder_point = reorder_point
@@ -372,9 +690,9 @@ def show(settings_dialog=None):
             
             try:
                 if num_simulations > 1:
+                    data = run_multiple_simulations(params, num_simulations, API_URL, days)
                     if data is None:
                         return
-                    # ПЕРЕСЧИТЫВАЕМ total_unmet из усреднённых данных
                     total_unmet = sum(day.get('unmet_demand', 0) for day in data['daily_history'])
                     st.info(f"📊 Результаты усреднены по {num_simulations} симуляциям")
                 else:
@@ -405,10 +723,10 @@ def show(settings_dialog=None):
     
     # Отображение результатов
     if st.session_state.simulation_results:
-        display_simulation_results(st.session_state.simulation_results)
+        display_simulation_results(st.session_state.simulation_results, db)
 
 
-def display_simulation_results(results):
+def display_simulation_results(results, db):
     """Отображает результаты симуляции"""
     if results is None:
         return
@@ -429,49 +747,23 @@ def display_simulation_results(results):
     if num_simulations > 1:
         st.info(f"📊 Результаты усреднены по {num_simulations} симуляциям | Стандартное отклонение прибыли: ±{std_profit:.0f} руб")
     
-    # Кнопка сохранения
-    col_save1, col_save2, col_save3 = st.columns([1, 2, 1])
-    with col_save2:
-        if st.button("💾 Сохранить результат в историю", use_container_width=True):
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        if st.button("💾 Сохранить эксперимент", use_container_width=True):
             if st.session_state.last_saved_experiment_id is not None:
                 st.warning("⚠️ Этот эксперимент уже сохранён!")
             else:
                 try:
-                    from database.db_manager import DatabaseManager
-                    db = DatabaseManager()
-                    
-                    exp_data = {
-                        'product_name': selected_product_name,
-                        'distribution': distribution,
-                        'days': days,
-                        'fifo_percent': fifo_percent if product_category == "strict" else None,
-                        'min_stock': min_stock,
-                        'purchase_price': params['purchase_price'],
-                        'sale_price': params['sale_price'],
-                        'shelf_life_days': params['shelf_life_days'],
-                        'spoilage_type': spoilage_type,
-                        'delivery_type': 'periodic' if params.get('milk_delivery_frequency') or params.get('tomatoes_delivery_frequency') else 'days_of_week',
-                        'delivery_frequency': params.get('milk_delivery_frequency') or params.get('tomatoes_delivery_frequency'),
-                        'delivery_days': str(params.get('milk_delivery_days') or params.get('tomatoes_delivery_days', [])),
-                        'packing_type': params.get('delivery_type', 'unit'),
-                        'box_size': params.get('box_size', 0),
-                        'total_revenue': data['total_revenue'],
-                        'total_cost': data['total_cost'],
-                        'total_spoilage_kg': data['total_spoilage_kg'],
-                        'total_spoilage_money': data['total_spoilage_money'],
-                        'profit': data['profit'],
-                        'total_unmet_demand': total_unmet,
-                        'avg_stock': data.get('avg_stock', 0)
-                    }
-                    
-                    experiment_id = db.save_experiment(exp_data)
-                    st.session_state.last_saved_experiment_id = experiment_id
+                    df = pd.DataFrame(data['daily_history'])
+                    id_exp = save_complete_experiment(results, params, df, db)
+                    st.session_state.last_saved_experiment_id = id_exp
+                    st.success(f"✅ Эксперимент сохранён! ID: {id_exp}")
                     st.rerun()
                 except Exception as e:
                     st.error(f"❌ Ошибка сохранения: {e}")
     
     if st.session_state.last_saved_experiment_id is not None:
-        st.info(f"✅ Результат сохранён в историю! (ID: {st.session_state.last_saved_experiment_id})")
+        st.info(f"✅ Эксперимент сохранён в БД (ID: {st.session_state.last_saved_experiment_id})")
     
     # ========== МЕТРИКИ ==========
     st.markdown("---")
@@ -498,7 +790,7 @@ def display_simulation_results(results):
     with col6:
         st.metric("📦 Средний остаток", f"{data.get('avg_stock', 0):.1f} кг")
     
-    # ========== СТАТИСТИКА ПО СИМУЛЯЦИЯМ (если их несколько) ==========
+    # ========== СТАТИСТИКА ПО СИМУЛЯЦИЯМ ==========
     if num_simulations > 1 and 'stats' in data:
         st.markdown("---")
         st.subheader("📊 Статистика по результатам симуляций")
@@ -560,7 +852,6 @@ def display_simulation_results(results):
     fig1.update_layout(template='plotly_white', xaxis_title="День", yaxis_title="Количество (кг/шт)")
     st.plotly_chart(fig1, use_container_width=True)
     
-    # График остатков
     st.subheader("📊 Динамика остатков на складе")
     fig2 = go.Figure()
     fig2.add_trace(go.Scatter(x=df['day'], y=df['start_stock'], name='Остаток на начало дня',
@@ -572,7 +863,6 @@ def display_simulation_results(results):
     fig2.update_layout(template='plotly_white', xaxis_title="День", yaxis_title="Остаток (кг/шт)")
     st.plotly_chart(fig2, use_container_width=True)
     
-    # График порчи
     st.subheader("🗑️ Динамика порчи")
     fig3 = go.Figure()
     fig3.add_trace(go.Bar(x=df['day'], y=df['spoilage_kg'], name='Порча', 
@@ -580,7 +870,6 @@ def display_simulation_results(results):
     fig3.update_layout(template='plotly_white', xaxis_title="День", yaxis_title="Порча (кг/шт)")
     st.plotly_chart(fig3, use_container_width=True)
     
-    # График поставок
     st.subheader("🚚 Поставки")
     fig4 = go.Figure()
     fig4.add_trace(go.Bar(x=df['day'], y=df['order'], name='Поставки', 
@@ -592,15 +881,15 @@ def display_simulation_results(results):
     st.markdown("---")
     st.subheader("📊 Анализ распределений")
     
-    col1, col2 = st.columns(2)
-    with col1:
+    col_hist1, col_hist2 = st.columns(2)
+    with col_hist1:
         fig_hist = px.histogram(df, x='demand', nbins=15, title="Распределение спроса",
                                 labels={'demand': 'Спрос'}, template='plotly_white')
         fig_hist.add_vline(x=df['demand'].mean(), line_dash="dash", line_color="red",
                           annotation_text=f"Среднее: {df['demand'].mean():.2f}")
         st.plotly_chart(fig_hist, use_container_width=True)
     
-    with col2:
+    with col_hist2:
         if product_category == "strict" and 'spoilage_stats' in data:
             fifo_rates = data['spoilage_stats'].get('fifo_rates', [])
             if fifo_rates:
@@ -634,15 +923,15 @@ def display_simulation_results(results):
     
     # ========== СТАТИСТИКА ==========
     st.markdown("---")
-    col1, col2 = st.columns(2)
-    with col1:
+    col_stats1, col_stats2 = st.columns(2)
+    with col_stats1:
         st.subheader("📊 Статистика спроса")
         if 'demand_stats' in data:
             stats = data['demand_stats']
             st.write(f"**Среднее:** {stats.get('mean', 0):.2f}")
             st.write(f"**Минимум:** {stats.get('min', 0):.2f}")
             st.write(f"**Максимум:** {stats.get('max', 0):.2f}")
-    with col2:
+    with col_stats2:
         st.subheader("🗑️ Статистика порчи")
         if product_category == "strict":
             if 'spoilage_stats' in data:
@@ -740,8 +1029,3 @@ def display_simulation_results(results):
         df_display = df_display.rename(columns=existing_columns)
         
         st.dataframe(df_display, use_container_width=True)
-        
-        csv = df_display.to_csv(index=False).encode('utf-8-sig')
-        st.download_button(label="📥 Скачать таблицу (CSV)", data=csv,
-                        file_name=f"{selected_product_name}_simulation_{days}_days.csv", 
-                        mime="text/csv")
