@@ -1,3 +1,11 @@
+"""
+fifo_sigma_loader.py - Загрузка эмпирических сигм для FIFO/LIFO
+
+Сигмы рассчитаны экспериментально (100 экспериментов по 1000 попыток)
+и сохранены в Excel. Файл: constants/fifo_lifo_sigma.xlsx
+Листы имеют вид "90_10" (FIFO 90%, LIFO 10%)
+"""
+
 import os
 import pandas as pd
 import re
@@ -6,11 +14,11 @@ import re
 class FIFOSigmaLoader:
     """Загрузчик сигм для FIFO/LIFO из Excel-файла"""
     
-    # Фиксированные ячейки для сигм
-    SIGMA_FIFO_ROW = 6  # строка 7 = индекс 6
-    SIGMA_FIFO_COL = 5  # колонка F = индекс 5
+    # Фиксированные ячейки в Excel, где лежат сигмы
+    SIGMA_FIFO_ROW = 6  # строка 7 (0-индексация)
+    SIGMA_FIFO_COL = 5  # колонка F
     SIGMA_LIFO_ROW = 6
-    SIGMA_LIFO_COL = 6  # колонка G = индекс 6
+    SIGMA_LIFO_COL = 6  # колонка G
     
     def __init__(self, excel_path="constants/fifo_lifo_sigma.xlsx"):
         self.excel_path = excel_path
@@ -27,7 +35,7 @@ class FIFOSigmaLoader:
         return None
     
     def _load_from_excel(self):
-        """Загружает сигмы из Excel (выполняется 1 раз)"""
+        """Загружает сигмы из Excel (выполняется 1 раз, результат кэшируется)"""
         
         if not os.path.exists(self.excel_path):
             print(f"⚠️ Файл {self.excel_path} не найден")
@@ -46,7 +54,6 @@ class FIFOSigmaLoader:
                 try:
                     df = pd.read_excel(self.excel_path, sheet_name=sheet_name, header=None)
                     
-                    # Берём ячейки F7 и G7
                     sigma_fifo = df.iloc[self.SIGMA_FIFO_ROW, self.SIGMA_FIFO_COL]
                     sigma_lifo = df.iloc[self.SIGMA_LIFO_ROW, self.SIGMA_LIFO_COL]
                     
@@ -72,12 +79,11 @@ class FIFOSigmaLoader:
     def get_sigmas(self, fifo_percent: int) -> tuple:
         """
         Возвращает (sigma_fifo, sigma_lifo) для заданного процента FIFO.
-        Если точного значения нет, ищет симметричное (например 90 → 10).
-        Если и симметричного нет — берёт ближайшее.
+        Если точного нет - ищем симметричный или ближайший.
         """
         self._ensure_loaded()
         
-        # Если кэш пуст → возвращаем теоретическую сигму 1.51
+        # Если кэш пуст (нет файла) - возвращаем теоретическое значение
         if not self.sigma_fifo_cache:
             return 1.51, 1.51
         
@@ -85,11 +91,9 @@ class FIFOSigmaLoader:
         if fifo_percent in self.sigma_fifo_cache:
             return self.sigma_fifo_cache[fifo_percent], self.sigma_lifo_cache[fifo_percent]
         
-        # 2. Симметричный поиск (FIFO 90% → LIFO 90% → лист 90_10 даёт сигмы для 10% FIFO)
-        # Для 90% FIFO нужны сигмы как у 10% FIFO, но поменянные местами
+        # 2. Симметричный поиск (90% FIFO → берём сигмы от 10% FIFO, меняя местами)
         symmetric = 100 - fifo_percent
         if symmetric in self.sigma_fifo_cache:
-            # Меняем местами: сигма FIFO = сигма LIFO из симметричного
             return self.sigma_lifo_cache[symmetric], self.sigma_fifo_cache[symmetric]
         
         # 3. Ближайшее значение
@@ -97,7 +101,7 @@ class FIFOSigmaLoader:
         return self.sigma_fifo_cache[closest], self.sigma_lifo_cache[closest]
     
     def get_stats(self):
-        """Возвращает статистику загруженных сигм (для отладки)"""
+        """Для отладки - возвращает статистику загруженных сигм"""
         self._ensure_loaded()
         return {
             'loaded': len(self.sigma_fifo_cache),
@@ -108,10 +112,11 @@ class FIFOSigmaLoader:
 
 
 # ========== ГЛОБАЛЬНЫЙ ОДИНОЧКА ==========
+# Чтобы не читать Excel при каждом вызове, используем синглтон
 _fifo_sigma_loader = None
 
 def get_fifo_sigma_loader() -> FIFOSigmaLoader:
-    """Возвращает глобальный экземпляр FIFOSigmaLoader (ленивая инициализация)"""
+    """Возвращает глобальный экземпляр (ленивая инициализация)"""
     global _fifo_sigma_loader
     if _fifo_sigma_loader is None:
         _fifo_sigma_loader = FIFOSigmaLoader()

@@ -1,3 +1,10 @@
+"""
+data_loader.py - Загрузка реальных данных из Excel
+
+Отвечает за импорт исторических данных о продажах.
+Пользователь скачивает шаблон, заполняет, загружает - программа читает.
+"""
+
 import pandas as pd
 import os
 from datetime import datetime
@@ -21,14 +28,14 @@ class DemandDataLoader:
         """
         df = pd.read_excel(file_path)
         
-        # Определяем колонку с датами
+        # Ищем колонку с датами (пользователь мог назвать по-разному)
         date_col = None
         for col in ['Дата', 'Date', 'ДАТА', 'date']:
             if col in df.columns:
                 date_col = col
                 break
         
-        # Определяем колонку со спросом
+        # Ищем колонку со спросом
         demand_col = None
         for col in ['Спрос', 'Demand', 'demand', 'СПРОС']:
             if col in df.columns:
@@ -38,10 +45,10 @@ class DemandDataLoader:
         if date_col is None or demand_col is None:
             raise ValueError("Excel должен содержать колонки 'Дата' и 'Спрос'")
         
-        # Преобразуем даты
+        # Приводим даты к единому формату
         df[date_col] = pd.to_datetime(df[date_col])
         
-        # Создаём словарь
+        # Собираем словарь для быстрого доступа по дате
         demand_dict = {}
         for _, row in df.iterrows():
             date = row[date_col].date()

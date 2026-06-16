@@ -1,84 +1,109 @@
+"""
+models.py - Pydantic-модели для валидации данных API
+
+Определяет структуру запросов и ответов FastAPI.
+Pydantic автоматически проверяет типы и преобразует данные.
+
+Основные модели:
+- SimulationParams - параметры запроса (что присылает Streamlit)
+- DailyResult - результат одного дня симуляции
+- SimulationResponse - полный ответ (что возвращает API)
+"""
+
 from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime
 
 
 class SimulationParams(BaseModel):
-    """Общие параметры для всех симуляций"""
+    """
+    Параметры запроса на симуляцию.
+    Streamlit отправляет JSON с этими полями, FastAPI валидирует их.
     
-    # Базовые параметры
-    days: int = 30
-    min_stock: float = 300.0
-    purchase_price: float = 220.0
-    sale_price: float = 295.0
-    start_date: datetime = datetime(2026, 2, 1)
+    Большинство полей имеют значения по умолчанию,
+    поэтому можно отправлять только изменяемые параметры.
+    """
     
-    # Информация о продукте
-    product_name: Optional[str] = None
-    product_type: Optional[str] = "tomatoes"
+    # ========== Базовые параметры симуляции ==========
+    days: int = 30                      # количество дней симуляции
+    min_stock: float = 300.0            # целевой уровень запаса (для R,S) или S (для s,S)
+    purchase_price: float = 220.0       # цена закупки (руб)
+    sale_price: float = 295.0           # цена продажи (руб)
+    start_date: datetime = datetime(2026, 2, 1)   # дата начала
     
-    # Параметры спроса
-    distribution: Optional[str] = "uniform"
-    weekday_factors: Optional[List[float]] = [0.8, 0.6, 0.9, 1.0, 1.3, 1.5, 1.1]
-    fixed_demand: Optional[List[float]] = None
+    # ========== Информация о продукте ==========
+    product_name: Optional[str] = None          # название товара из БД
+    product_type: Optional[str] = "tomatoes"    # 'milk' или 'tomatoes' (для обратной совместимости)
     
-    # Параметры равномерного спроса
-    demand_min: Optional[float] = None
-    demand_max: Optional[float] = None
+    # ========== Параметры спроса ==========
+    distribution: Optional[str] = "uniform"     # 'uniform' или 'normal'
+    weekday_factors: Optional[List[float]] = [0.8, 0.6, 0.9, 1.0, 1.3, 1.5, 1.1]  # Пн-Вс
+    fixed_demand: Optional[List[float]] = None  # фиксированный список (для тестов)
     
-    # Параметры порчи
-    spoilage_type: Optional[str] = "linear"
-    shelf_life_days: int = 30
-    power_p: Optional[float] = 2.0
-    logistic_k: Optional[float] = 15.0
+    # Для равномерного распределения
+    demand_min: Optional[float] = None          # минимальный спрос
+    demand_max: Optional[float] = None          # максимальный спрос
     
-    # Параметры поставок (общие)
-    delivery_type: Optional[str] = "unit"
-    box_size: Optional[int] = 0
-    fixed_quantity: Optional[float] = None
+    # ========== Параметры порчи ==========
+    spoilage_type: Optional[str] = "linear"     # 'linear', 'power', 'logistic'
+    shelf_life_days: int = 30                   # срок годности в днях
+    power_p: Optional[float] = 2.0              # степень для степенной порчи
+    logistic_k: Optional[float] = 15.0          # крутизна для логистической
     
-    # Параметры поставок для молока
+    # ========== Параметры поставок ==========
+    delivery_type: Optional[str] = "unit"       # 'unit' (штучно) или 'box' (коробками)
+    box_size: Optional[int] = 0                 # размер коробки (если box)
+    fixed_quantity: Optional[float] = None      # фиксированный объём Q (для R,Q и s,Q)
+    
+    # Для обратной совместимости (раньше были отдельно для молока и помидоров)
     milk_delivery_frequency: Optional[int] = 2
     milk_delivery_days: Optional[List[int]] = [0, 3]
-    
-    # Параметры поставок для помидоров
     tomatoes_delivery_frequency: Optional[int] = 3
     tomatoes_delivery_days: Optional[List[int]] = [0, 3]
     
-    # Параметры для молока
-    fifo_percent: Optional[float] = 75.0
-    lifo_percent: Optional[float] = 25.0
-    sigma_buyer: Optional[float] = 1.51
-    utilization_price: Optional[float] = 5.0
+    # ========== Параметры для строгих товаров (молоко) ==========
+    fifo_percent: Optional[float] = 75.0        # процент FIFO покупателей
+    lifo_percent: Optional[float] = 25.0        # процент LIFO (обычно 100 - fifo)
+    sigma_buyer: Optional[float] = 1.51         # теоретическая сигма для FIFO
+    utilization_price: Optional[float] = 5.0    # стоимость утилизации (руб/кг)
     
-    # Параметры для помидоров
+    # ========== Параметры для помидоров (обратная совместимость) ==========
     sigma_10: Optional[float] = 0.96
     sigma_50: Optional[float] = 1.59
     
-    # Параметры доставки
-    delivery_cost_type: Optional[str] = "fixed"
-    delivery_fixed_cost: float = 0.0
-    delivery_rate_cost: float = 0.0
+    # ========== Параметры доставки (стоимость) ==========
+    delivery_cost_type: Optional[str] = "fixed"     # 'none', 'fixed', 'rate', 'combined'
+    delivery_fixed_cost: float = 0.0                # фиксированная стоимость за поставку
+    delivery_rate_cost: float = 0.0                 # тариф за кг/шт
     
-    # Тип стратегии (добавить)
-    strategy_type: Optional[str] = "r_s"  # r_s, r_q, s_s, s_q, custom
+    # ========== Стратегия управления запасами ==========
+    strategy_type: Optional[str] = "r_s"            # 'r_s', 'r_q', 's_s', 's_q', 'custom'
     
-    # Параметры расписания поставок
-    schedule_type: Optional[str] = "frequency"
-    delivery_frequency: Optional[int] = 2
-    delivery_days: Optional[List[int]] = [0, 3]
-    reorder_point: Optional[float] = None
-    max_stock: Optional[float] = None
+    # ========== Расписание поставок ==========
+    schedule_type: Optional[str] = "frequency"      # 'frequency' или 'days'
+    delivery_frequency: Optional[int] = 2           # периодичность в днях (для frequency)
+    delivery_days: Optional[List[int]] = [0, 3]     # дни недели (0=Пн, 6=Вс) для days
+    reorder_point: Optional[float] = None           # точка заказа s (для s,S и s,Q)
+    max_stock: Optional[float] = None               # максимальный запас S (для s,S)
     
-    # Поля для импорта данных (реальные даты из Excel)
-    use_real_demand: bool = False
-    real_demand_dates: Optional[List[str]] = None
-    real_demand_values: Optional[List[float]] = None
-    real_start_date: Optional[str] = None
+    # ========== Импорт реальных данных из Excel ==========
+    use_real_demand: bool = False                   # использовать реальные данные?
+    real_demand_dates: Optional[List[str]] = None   # даты (YYYY-MM-DD)
+    real_demand_values: Optional[List[float]] = None # значения спроса
+    real_start_date: Optional[str] = None           # реальная дата начала
+
 
 class DailyResult(BaseModel):
-    """Результаты одного дня симуляции"""
+    """
+    Результаты одного дня симуляции.
+    Используется внутри SimulationResponse.
     
+    Поля могут быть None для разных типов товаров:
+    - для молока: fifo_percent, lifo_percent, batch_*_stock
+    - для помидоров: stock_week1-3
+    """
+    
+    # Базовые поля (есть всегда)
     day: int
     date: str
     demand: float
@@ -91,36 +116,48 @@ class DailyResult(BaseModel):
     end_stock: Optional[float] = None
     unmet_demand: Optional[float] = None
     
+    # Для строгих товаров (молоко)
     fifo_percent: Optional[float] = None
     lifo_percent: Optional[float] = None
     utilization_cost: Optional[float] = None
     
+    # Остатки по партиям (первые 5 партий)
     batch_1_stock: Optional[float] = None
     batch_2_stock: Optional[float] = None
     batch_3_stock: Optional[float] = None
     batch_4_stock: Optional[float] = None
     batch_5_stock: Optional[float] = None
     
-    stock_week1: Optional[float] = None
-    stock_week2: Optional[float] = None
-    stock_week3: Optional[float] = None
+    # Для товаров с постепенной порчей (овощи)
+    stock_week1: Optional[float] = None      # остаток 0-7 дней
+    stock_week2: Optional[float] = None      # остаток 8-14 дней
+    stock_week3: Optional[float] = None      # остаток 15+ дней
     
+    # Продажи по типам (для молока)
     fifo_sales: Optional[float] = None
     lifo_sales: Optional[float] = None
 
 
 class SimulationResponse(BaseModel):
-    """Полный ответ от API"""
+    """
+    Полный ответ API после симуляции.
+    Содержит итоговые метрики и историю по дням.
+    """
     
-    total_revenue: float
-    total_cost: float
-    total_purchase_cost: float       
-    total_delivery_cost: float       
-    total_utilization_cost: float    
-    total_spoilage_kg: float
-    total_spoilage_money: float
-    profit: float
-    avg_stock: float
+    # Итоговые метрики
+    total_revenue: float                    # общая выручка (руб)
+    total_cost: float                       # общие затраты (руб)
+    total_purchase_cost: float              # затраты на закупку (руб)
+    total_delivery_cost: float              # затраты на доставку (руб)
+    total_utilization_cost: float           # затраты на утилизацию (руб)
+    total_spoilage_kg: float                # потери от порчи (кг/шт)
+    total_spoilage_money: float             # потери в деньгах (руб)
+    profit: float                           # чистая прибыль (руб)
+    avg_stock: float                        # средний остаток за период
+    
+    # История по дням
     daily_history: List[DailyResult]
-    demand_stats: dict
-    spoilage_stats: dict
+    
+    # Дополнительная статистика
+    demand_stats: dict                      # среднее/мин/макс спроса
+    spoilage_stats: dict                    # статистика порчи/FIFO

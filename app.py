@@ -1,57 +1,74 @@
+"""
+app.py - Главный файл Streamlit-приложения
+
+Здесь происходит:
+- Настройка страницы (заголовок, иконка, ширина)
+- Загрузка CSS-стилей
+- Инициализация глобальных настроек в session_state
+- Определение модального окна настроек симуляции (settings_dialog)
+- Создание 4 основных вкладок: Главная, Симуляция, База данных, Помощь
+
+Это точка входа в приложение. Запускается командой: streamlit run app.py
+"""
+
 import streamlit as st
 import glob
 import os
 import pandas as pd
 from datetime import datetime, timedelta
 
+# ========== НАСТРОЙКА СТРАНИЦЫ ==========
 st.set_page_config(
     page_title="Симулятор продуктов",
     page_icon="🥛",
     layout="wide"
 )
 
-# Сброс всех флагов модальных окон при загрузке приложения
+# ========== СБРОС ФЛАГОВ МОДАЛЬНЫХ ОКОН ==========
+# Важно: сбрасываем только при первом запуске, чтобы случайно не закрыть нужные диалоги
 if 'flags_reset' not in st.session_state:
     for flag in ['show_add_modal', 'show_edit_modal', 'show_delete_modal', 
                  'show_clear_modal', 'show_view_dialog']:
         st.session_state[flag] = False
     st.session_state.flags_reset = True
 
-# Загрузка стилей
+# ========== ЗАГРУЗКА СТИЛЕЙ ==========
+# CSS-файл отвечает за внешний вид (карточки, кнопки, таблицы)
 with open("styles.css", "r", encoding="utf-8") as f:
     st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
-# Инициализация общих настроек
+# ========== ИНИЦИАЛИЗАЦИЯ ОБЩИХ НАСТРОЕК ==========
+# Эти настройки сохраняются между сессиями пользователя
 if 'settings' not in st.session_state:
     st.session_state.settings = {
-        'distribution': 'uniform',
-        'weekday_factors': [0.8, 0.6, 0.9, 1.0, 1.3, 1.5, 1.1],
-        'spoilage_type': 'linear',
-        'power_p': 2.0,
-        'logistic_k': 15.0,
-        'fifo_percent': 75,
-        'use_custom_bounds': False,
+        'distribution': 'uniform',           # закон спроса: равномерный
+        'weekday_factors': [0.8, 0.6, 0.9, 1.0, 1.3, 1.5, 1.1],  # Пн-Вс
+        'spoilage_type': 'linear',           # модель порчи по умолчанию
+        'power_p': 2.0,                      # степень для степенной порчи
+        'logistic_k': 15.0,                  # крутизна для логистической
+        'fifo_percent': 75,                  # процент FIFO покупателей
+        'use_custom_bounds': False,          # ручные границы спроса?
         'demand_min': None,
         'demand_max': None,
-        'delivery_cost_type': 'none',
+        'delivery_cost_type': 'none',        # стоимость доставки не учитывать
         'delivery_fixed_cost': 0.0,
         'delivery_rate_cost': 0.0,
-        'strategy_type': 'r_s',
-        'delivery_type': 'unit',
-        'box_size': 20,
+        'strategy_type': 'r_s',              # стратегия по умолчанию (R,S)
+        'delivery_type': 'unit',             # штучная поставка
+        'box_size': 20,                      # размер коробки
         'fixed_quantity': None,
-        'delivery_frequency': 2,
-        'delivery_days': [0, 3],
-        'schedule_type': 'frequency',
+        'delivery_frequency': 2,             # поставка каждые 2 дня
+        'delivery_days': [0, 3],             # или по понедельникам и четвергам
+        'schedule_type': 'frequency',        # тип расписания
         'reorder_point': None,
         'max_stock': None,
-        'min_stock': 300,
-        'utilization_price': 5.0, 
-        'sim_start_date': '2026-02-01',
-        'sim_end_date': '2026-03-03'
+        'min_stock': 300,                    # целевой уровень запаса
+        'utilization_price': 5.0,            # стоимость утилизации
+        'sim_start_date': '2026-02-01',      # дата начала симуляции
+        'sim_end_date': '2026-03-03'         # дата окончания
     }
 
-# Инициализация для реальных данных
+# ========== ИНИЦИАЛИЗАЦИЯ ДЛЯ РЕАЛЬНЫХ ДАННЫХ ==========
 if 'use_real_demand' not in st.session_state:
     st.session_state.use_real_demand = False
 if 'real_demand_dates' not in st.session_state:
@@ -65,7 +82,7 @@ if 'real_start_date' not in st.session_state:
 # ========== МОДАЛЬНОЕ ОКНО НАСТРОЕК ==========
 @st.dialog("⚙️ **Настройки симуляции**", width="large")
 def settings_dialog():
-    """Модальное окно с общими настройками"""
+    """Модальное окно с тремя вкладками: Общие настройки, Стратегия поставок, Доставка"""
     
     # Очищаем временные результаты при открытии окна
     if 'calculated_factors' in st.session_state:
@@ -75,12 +92,11 @@ def settings_dialog():
     base_demand = st.session_state.get('current_base_demand', 100)
     product_category = st.session_state.get('current_product_category', 'gradual')
     
-    # Создаём вкладки внутри модального окна
+    # Три вкладки внутри диалога
     tab1, tab2, tab3 = st.tabs(["📊 Общие настройки", "🎮 Стратегия поставок", "💰 Доставка"])
     
     # ========== ВКЛАДКА 1: ОБЩИЕ НАСТРОЙКИ ==========
     with tab1:
-        # ========== ДОБАВИТЬ ПОСЛЕ БЛОКА УТИЛИЗАЦИИ ==========
         st.markdown("---")
         st.subheader("🔄 Усреднение результатов")
         
@@ -93,7 +109,7 @@ def settings_dialog():
             key="dialog_num_simulations",
             help="Прогон нескольких симуляций с разными случайными значениями и усреднение результатов"
         )
-        # ====================================================
+        
         col1, col2 = st.columns(2)
         
         with col1:
@@ -152,7 +168,6 @@ def settings_dialog():
                 demand_max = None
         
         with col2:
-            # Условное отображение: для строгих товаров - FIFO/LIFO, для gradual - параметры порчи
             if product_category == "strict":
                 st.subheader("👥 Распределение покупателей (для молока)")
                 fifo_percent = st.slider(
@@ -163,7 +178,6 @@ def settings_dialog():
                     step=5,
                     key="dialog_fifo_percent"
                 )
-                # Сохраняем значения порчи (не используются, но нужны для сохранения)
                 spoilage_type = st.session_state.settings.get('spoilage_type', 'linear')
                 power_p = st.session_state.settings.get('power_p', 2.0)
                 logistic_k = st.session_state.settings.get('logistic_k', 15.0)
@@ -207,7 +221,6 @@ def settings_dialog():
                         key="dialog_logistic_k"
                     )
                 
-                # Сохраняем FIFO (не используется)
                 fifo_percent = st.session_state.settings.get('fifo_percent', 75)
         
         # Коэффициенты дней недели
@@ -227,7 +240,6 @@ def settings_dialog():
         
         weekday_factors = [mon, tue, wed, thu, fri, sat, sun]
 
-        # ========== ДОБАВИТЬ ЭТОТ БЛОК ==========
         st.markdown("---")
         st.subheader("🗑️ Утилизация просроченного товара")
         
@@ -237,15 +249,12 @@ def settings_dialog():
             value=st.session_state.settings.get('utilization_price', 5.0),
             step=1.0,
             key="dialog_utilization_price",
-            help="Затраты на утилизацию единицы просроченного товара. Для товаров с постепенной порчей можно оставить 0."
+            help="Затраты на утилизацию единицы просроченного товара."
         )
-        # =====================================
 
-        # ========== БЛОК ВЫБОРА ДАТ ==========
         st.markdown("---")
         st.subheader("📅 Период симуляции")
         
-        # Получаем текущие даты из session_state или значения по умолчанию
         sim_start_date = st.session_state.settings.get('sim_start_date', '2026-02-01')
         sim_end_date = st.session_state.settings.get('sim_end_date', '2026-03-03')
         
@@ -348,7 +357,6 @@ def settings_dialog():
     
     # ========== ВКЛАДКА 2: СТРАТЕГИЯ ПОСТАВОК ==========
     with tab2:
-        # Загружаем сохранённые значения (с защитой от 0 для box_size)
         saved_strategy_type = st.session_state.settings.get('strategy_type', 'r_s')
         saved_delivery_type = st.session_state.settings.get('delivery_type', 'unit')
         box_size_val = st.session_state.settings.get('box_size', 20)
@@ -386,7 +394,6 @@ def settings_dialog():
         st.markdown("---")
         st.markdown("### 📋 Параметры стратегии")
         
-        # ===== (R, S) =====
         if strategy_type == "r_s":
             delivery_type = st.radio(
                 "Способ поставки",
@@ -422,12 +429,10 @@ def settings_dialog():
                 delivery_days = [day_map[d] for d in selected_days]
             
             min_stock = st.number_input("📦 Целевой уровень запаса", min_value=0.0, value=saved_min_stock, step=50.0, key="dialog_r_s_min_stock")
-            
             fixed_quantity = None
             reorder_point = None
             max_stock = None
         
-        # ===== (R, Q) =====
         elif strategy_type == "r_q":
             fixed_quantity = st.number_input("📦 Фиксированный объём поставки (шт/кг)", min_value=1.0, value=saved_fixed_quantity, step=10.0, key="dialog_r_q_fixed")
             
@@ -457,7 +462,6 @@ def settings_dialog():
             reorder_point = None
             max_stock = None
         
-        # ===== (s, S) =====
         elif strategy_type == "s_s":
             delivery_type = st.radio(
                 "Способ поставки",
@@ -479,13 +483,11 @@ def settings_dialog():
                 max_stock = st.number_input("📈 Максимальный запас (S)", min_value=0.0, value=saved_max_stock, step=50.0, key="dialog_s_s_max")
             
             st.caption("⚡ Поставка происходит при остатке ниже s, независимо от расписания")
-            
             fixed_quantity = None
             delivery_frequency = 0
             delivery_days = []
             min_stock = max_stock
         
-        # ===== (s, Q) =====
         elif strategy_type == "s_q":
             delivery_type = st.radio(
                 "Способ поставки",
@@ -521,15 +523,13 @@ def settings_dialog():
                 )
             
             st.caption("⚡ Поставка происходит при остатке ниже s, заказывается фиксированное количество Q")
-            
             delivery_frequency = 0
             delivery_days = []
             schedule_type = None
             min_stock = 0
             max_stock = None
 
-        # ===== Пользовательская =====
-        else:  # custom
+        else:
             st.info("🔧 Конструктор стратегии: выберите, как будет работать пополнение запасов")
             
             st.subheader("⏰ Когда делать заказ?")
@@ -649,7 +649,6 @@ def settings_dialog():
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         if st.button("✅ Сохранить настройки", type="primary", use_container_width=True, key="dialog_save"):
-            # Получаем значения в зависимости от выбранной стратегии
             if strategy_type == "r_s":
                 final_delivery_type = delivery_type
                 final_box_size = box_size
@@ -690,7 +689,7 @@ def settings_dialog():
                 final_reorder_point = float(reorder_point)
                 final_max_stock = None
                 final_min_stock = 0
-            else:  # custom
+            else:
                 final_delivery_type = delivery_type
                 final_box_size = box_size
                 final_fixed_quantity = float(fixed_quantity) if fixed_quantity is not None else None
@@ -702,7 +701,6 @@ def settings_dialog():
                 final_min_stock = float(min_stock) if 'min_stock' in dir() and min_stock is not None else 0
             
             st.session_state.settings = {
-                # Общие настройки
                 'distribution': distribution,
                 'weekday_factors': weekday_factors,
                 'spoilage_type': spoilage_type,
@@ -713,16 +711,12 @@ def settings_dialog():
                 'demand_min': demand_min if distribution == "uniform" and use_custom_bounds else None,
                 'demand_max': demand_max if distribution == "uniform" and use_custom_bounds else None,
                 'num_simulations': num_simulations,
-                # Утилизация
                 'utilization_price': utilization_price,
-                # Даты симуляции
                 'sim_start_date': start_date.strftime('%Y-%m-%d'),
                 'sim_end_date': end_date.strftime('%Y-%m-%d'),
-                # Доставка
                 'delivery_cost_type': delivery_cost_type,
                 'delivery_fixed_cost': delivery_fixed_cost,
                 'delivery_rate_cost': delivery_rate_cost,
-                # Стратегия
                 'strategy_type': strategy_type,
                 'delivery_type': final_delivery_type,
                 'box_size': final_box_size,
@@ -738,7 +732,7 @@ def settings_dialog():
             st.rerun()
 
 
-# ========== ОСНОВНОЙ КОНТЕНТ ==========
+# ========== ОСНОВНЫЕ ВКЛАДКИ ПРИЛОЖЕНИЯ ==========
 tab1, tab2, tab3, tab4 = st.tabs(["🏠 **Главная**", "🎮 **Симуляция**", "🗄️ **База данных**", "📖 **Помощь**"])
 
 # ========== ВКЛАДКА 1: ГЛАВНАЯ ==========
@@ -769,7 +763,6 @@ with tab1:
     
     st.markdown("---")
     
-    # Возможности
     st.markdown('<h2 class="section-title">🎯 Возможности</h2>', unsafe_allow_html=True)
     
     col1, col2, col3 = st.columns(3)
@@ -815,7 +808,6 @@ with tab1:
     
     st.markdown("---")
     
-    # Как начать
     st.markdown('<h2 class="section-title">🚀 Как начать</h2>', unsafe_allow_html=True)
     st.markdown("""
     <div class="steps-container">
@@ -830,7 +822,6 @@ with tab1:
     
     st.markdown("---")
     
-    # Исходный код
     st.markdown('<h2 class="section-title">📁 Исходный код</h2>', unsafe_allow_html=True)
     st.markdown("""
     <div class="about-text">

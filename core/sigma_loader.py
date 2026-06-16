@@ -1,9 +1,11 @@
 """
-sigma_loader.py
-Загрузка эмпирических значений сигмы из Excel-файла
+sigma_loader.py - Загрузка эмпирических сигм для нормального спроса
+
 Файл: constants/demand_sigma.xlsx
 Листы: названия = спрос (10, 20, 30...)
 Ячейка с сигмой: F7 (фиксированная)
+
+Сигмы рассчитаны по реальным данным (100 экспериментов по 1000 попыток)
 """
 
 import os
@@ -15,7 +17,7 @@ class SigmaLoader:
     """
     Загрузчик сигм из Excel-файла.
     При первом обращении читает файл и сохраняет все сигмы в словарь.
-    Далее работает только с кэшем.
+    Далее работает только с кэшем (ленивая загрузка + синглтон).
     """
     
     # Фиксированная ячейка для сигмы (F7)
@@ -32,6 +34,7 @@ class SigmaLoader:
         """Загружает сигмы из Excel (выполняется 1 раз)"""
         
         if not os.path.exists(self.excel_path):
+            # Файла нет - будем использовать теоретическую сигму
             self._loaded = True
             return
         
@@ -43,10 +46,7 @@ class SigmaLoader:
                     # Название листа = спрос (должно быть числом)
                     demand = int(sheet_name)
                     
-                    # Читаем весь лист
                     df = pd.read_excel(self.excel_path, sheet_name=sheet_name, header=None)
-                    
-                    # Берём ячейку F7 (строка 6, колонка 5)
                     sigma = df.iloc[self.SIGMA_ROW, self.SIGMA_COL]
                     
                     self.sigma_cache[demand] = float(sigma)

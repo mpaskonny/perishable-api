@@ -1,9 +1,25 @@
+"""
+dialogs.py - Модальные диалоги для работы с товарами и экспериментами
+
+Содержит все st.dialog окна:
+- add_product_modal - добавление нового товара
+- edit_product_modal - редактирование товара
+- delete_product_modal - удаление товара
+- clear_experiments_modal - очистка всей истории экспериментов
+"""
+
+
 import streamlit as st
 import sqlite3
 from database.db_manager import DatabaseManager
 
 @st.dialog("➕ Добавление нового товара", width="large")
 def add_product_modal():
+    """
+    Диалог добавления товара.
+    Пользователь вводит название, цены, срок годности, базовый спрос.
+    После сохранения товар добавляется в БД.
+    """
     db = DatabaseManager()
     
     with st.form("add_product_form"):
@@ -37,6 +53,7 @@ def add_product_modal():
                 st.rerun()
         
         if submitted:
+            # Валидация введённых данных
             errors = []
             if not name:
                 errors.append("Введите название товара")
@@ -61,6 +78,10 @@ def add_product_modal():
 
 @st.dialog("✏️ Редактирование товара", width="large")
 def edit_product_modal():
+    """
+    Диалог редактирования товара.
+    Открывается с предзаполненными данными выбранного товара.
+    """
     db = DatabaseManager()
     product = st.session_state.editing_product
     
@@ -119,6 +140,10 @@ def edit_product_modal():
 
 @st.dialog("🗑️ Подтверждение удаления", width="small")
 def delete_product_modal():
+    """
+    Диалог подтверждения удаления товара.
+    Если у товара есть эксперименты, удаление будет заблокировано.
+    """
     db = DatabaseManager()
     product_name = st.session_state.delete_product_name
     product_id = st.session_state.delete_product_id
@@ -145,6 +170,10 @@ def delete_product_modal():
 
 @st.dialog("🗑️ Подтверждение очистки", width="small")
 def clear_experiments_modal():
+    """
+    Диалог подтверждения очистки всей истории экспериментов.
+    Удаляет ВСЕ эксперименты из БД.
+    """
     st.warning("⚠️ Вы действительно хотите удалить **ВСЕ** сохранённые эксперименты?")
     st.caption("Это действие невозможно отменить.")
     

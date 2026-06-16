@@ -1,3 +1,17 @@
+"""
+db_manager.py - Работа с базой данных SQLite
+
+Управляет всеми операциями с БД:
+- Товары (CRUD)
+- Настройки экспериментов
+- Метрики экспериментов
+- Детальная история по дням
+- Выгрузка полных данных для Excel
+
+Использует паттерн "одиночка" неявно (экземпляр создаётся в pages).
+Для JSON-полей (weekday_factors, delivery_days) использует сериализацию.
+"""
+
 import sqlite3
 import json
 import pandas as pd
@@ -11,14 +25,16 @@ class DatabaseManager:
         self._init_db()
 
     def _get_connection(self):
+        """Возвращает соединение с БД. Рекомендуется использовать with."""
         return sqlite3.connect(self.db_path)
 
     def _init_db(self):
-        """Инициализация БД с новой схемой"""
+        """Инициализация БД с новой схемой.
+           При обнаружении старой структуры (без id_setting) пересоздаёт таблицы."""
         with self._get_connection() as conn:
             cursor = conn.cursor()
             
-            # Проверяем, существует ли старая таблица experiments с неправильной структурой
+            # Проверяем, существует ли старая таблица experiments
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='experiments'")
             old_table_exists = cursor.fetchone()
             
@@ -36,14 +52,14 @@ class DatabaseManager:
                     cursor.execute("DROP TABLE IF EXISTS experiments")
                     cursor.execute("DROP TABLE IF EXISTS experiment_settings")
                     
-                    # Сбрасываем последовательности
+                    # Сбрасываем счётчики автоинкремента
                     cursor.execute("DELETE FROM sqlite_sequence WHERE name='experiments'")
                     cursor.execute("DELETE FROM sqlite_sequence WHERE name='experiment_settings'")
                     cursor.execute("DELETE FROM sqlite_sequence WHERE name='experiment_daily_history'")
                     
                     print("✅ Старые таблицы удалены. Создаются новые...")
 
-            # 1. Категории товаров
+            # ========== 1. Категории товаров (справочник) ==========
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS product_category (
                     id_category INTEGER PRIMARY KEY,
@@ -51,7 +67,7 @@ class DatabaseManager:
                 )
             """)
 
-            # 2. Товары
+            # ========== 2. Товары (базовые параметры, могут меняться) ==========
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS products (
                     id_product INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -65,7 +81,8 @@ class DatabaseManager:
                 )
             """)
 
-            # 3. Настройки эксперимента
+            # ========== 3. Настройки эксперимента (фиксируются на момент сохранения) ==========
+            # Дублируем поля из products, чтобы цены не менялись задним числом
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS experiment_settings (
                     id_setting INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -109,7 +126,7 @@ class DatabaseManager:
                 )
             """)
 
-            # 4. Результаты экспериментов
+            # ========== 4. Результаты экспериментов (метрики) ==========
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS experiments (
                     id_experiment INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -129,7 +146,8 @@ class DatabaseManager:
                 )
             """)
 
-            # 5. Детальная история по дням
+            # ========== 5. Детальная история по дням (для выгрузки в Excel) ==========
+            # Хранит каждый день симуляции - много записей на один эксперимент
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS experiment_daily_history (
                     id_daily INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -162,7 +180,7 @@ class DatabaseManager:
                 )
             """)
 
-            # Индексы (проверяем существование таблиц перед созданием)
+            # Индексы для ускорения запросов
             try:
                 cursor.execute("CREATE INDEX IF NOT EXISTS idx_experiments_id_setting ON experiments(id_setting)")
             except sqlite3.OperationalError:
@@ -178,7 +196,7 @@ class DatabaseManager:
             except sqlite3.OperationalError:
                 pass
 
-            # Начальные данные (категории)
+            # Заполняем справочник категорий (если пусто)
             cursor.execute("SELECT COUNT(*) FROM product_category")
             if cursor.fetchone()[0] == 0:
                 cursor.execute("INSERT INTO product_category (id_category, name) VALUES (1, 'strict')")
@@ -186,8 +204,10 @@ class DatabaseManager:
 
             conn.commit()
 
-    # ========== ТОВАРЫ ==========
+    # ==================== ТОВАРЫ ====================
+    
     def get_all_products(self) -> pd.DataFrame:
+        """Возвращает DataFrame со всеми товарами (для отображения в интерфейсе)"""
         query = """
             SELECT p.id_product, p.name, pc.name as category,
                    p.purchase_price, p.sale_price, p.shelf_life_days,
@@ -199,6 +219,7 @@ class DatabaseManager:
 
     def add_product(self, name: str, category_id: int, purchase_price: float,
                     sale_price: float, shelf_life_days: int, base_demand: float) -> int:
+        """Добавляет новый товар, возвращает его ID"""
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("""
@@ -210,6 +231,8 @@ class DatabaseManager:
             return cursor.lastrowid
 
     def update_product(self, product_id: int, **kwargs):
+        """Обновляет поля товара. Допустимые поля: name, id_category, purchase_price,
+           sale_price, shelf_life_days, base_demand."""
         allowed = ['name', 'id_category', 'purchase_price', 'sale_price', 
                    'shelf_life_days', 'base_demand']
         updates = []
@@ -227,6 +250,8 @@ class DatabaseManager:
             conn.commit()
 
     def delete_product(self, product_id: int):
+        """Удаляет товар, но только если нет связанных экспериментов.
+           Если эксперименты есть - выбрасывает исключение."""
         with self._get_connection() as conn:
             cursor = conn.cursor()
             # Проверяем, есть ли эксперименты
@@ -241,6 +266,7 @@ class DatabaseManager:
             conn.commit()
 
     def get_product_by_name(self, name: str) -> dict:
+        """Возвращает товар по названию (словарь) или None"""
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM products WHERE name = ?", (name,))
@@ -251,19 +277,22 @@ class DatabaseManager:
             return None
 
     def get_product_id_by_name(self, name: str) -> int:
+        """Возвращает ID товара по названию или None"""
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT id_product FROM products WHERE name = ?", (name,))
             row = cursor.fetchone()
             return row[0] if row else None
 
-    # ========== НАСТРОЙКИ ЭКСПЕРИМЕНТА ==========
+    # ==================== НАСТРОЙКИ ЭКСПЕРИМЕНТА ====================
+    
     def save_settings(self, settings: Dict[str, Any]) -> int:
-        """Сохраняет настройки эксперимента, возвращает id_setting"""
+        """Сохраняет настройки эксперимента, возвращает id_setting.
+           JSON-поля (weekday_factors, delivery_days) сериализуются в строку."""
         with self._get_connection() as conn:
             cursor = conn.cursor()
             
-            # Преобразуем JSON-поля
+            # Преобразуем списки в JSON-строки для хранения в SQLite
             weekday_factors = json.dumps(settings.get('weekday_factors', [0.8, 0.6, 0.9, 1.0, 1.3, 1.5, 1.1]))
             delivery_days = json.dumps(settings.get('delivery_days', []))
             
@@ -321,6 +350,7 @@ class DatabaseManager:
             return cursor.lastrowid
 
     def get_settings_by_id(self, id_setting: int) -> Optional[Dict]:
+        """Загружает настройки по ID, восстанавливая JSON-поля в списки"""
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM experiment_settings WHERE id_setting = ?", (id_setting,))
@@ -328,7 +358,7 @@ class DatabaseManager:
             if row:
                 cols = [desc[0] for desc in cursor.description]
                 settings = dict(zip(cols, row))
-                # Восстанавливаем JSON
+                # Восстанавливаем JSON в Python-списки
                 if settings.get('weekday_factors'):
                     try:
                         settings['weekday_factors'] = json.loads(settings['weekday_factors'])
@@ -342,7 +372,8 @@ class DatabaseManager:
                 return settings
             return None
 
-    # ========== ЭКСПЕРИМЕНТЫ (МЕТРИКИ) ==========
+    # ==================== ЭКСПЕРИМЕНТЫ (МЕТРИКИ) ====================
+    
     def save_experiment(self, experiment: Dict[str, Any]) -> int:
         """Сохраняет метрики эксперимента, возвращает id_experiment"""
         with self._get_connection() as conn:
@@ -369,6 +400,7 @@ class DatabaseManager:
             return cursor.lastrowid
 
     def get_experiment_by_id(self, id_experiment: int) -> Optional[Dict]:
+        """Возвращает метрики эксперимента по ID"""
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM experiments WHERE id_experiment = ?", (id_experiment,))
@@ -379,7 +411,8 @@ class DatabaseManager:
             return None
 
     def get_all_experiments(self) -> pd.DataFrame:
-        """Получает все эксперименты с нужными колонками для отображения"""
+        """Возвращает DataFrame со всеми экспериментами для таблицы истории.
+           JOIN с experiment_settings для получения названия товара и стратегии."""
         query = """
             SELECT 
                 e.id_experiment,
@@ -398,9 +431,11 @@ class DatabaseManager:
         """
         return pd.read_sql_query(query, self._get_connection())
 
-    # ========== ДЕТАЛЬНАЯ ИСТОРИЯ ПО ДНЯМ ==========
+    # ==================== ДЕТАЛЬНАЯ ИСТОРИЯ ПО ДНЯМ ====================
+    
     def save_daily_history_batch(self, id_experiment: int, daily_history: List[Dict]):
-        """Пакетное сохранение истории по дням"""
+        """Пакетное сохранение истории по дням.
+           Вставляем много записей за один раз (для производительности)."""
         with self._get_connection() as conn:
             cursor = conn.cursor()
             
@@ -443,6 +478,7 @@ class DatabaseManager:
             conn.commit()
 
     def get_daily_history(self, id_experiment: int) -> pd.DataFrame:
+        """Возвращает DataFrame с историей по дням для выгрузки в Excel"""
         query = """
             SELECT day, date, demand, start_stock, sales, spoilage_kg,
                    order_qty, revenue, purchase_cost, end_stock, unmet_demand,
@@ -453,9 +489,11 @@ class DatabaseManager:
         """
         return pd.read_sql_query(query, self._get_connection(), params=(id_experiment,))
 
-    # ========== ПОЛНАЯ ВЫГРУЗКА ЭКСПЕРИМЕНТА ==========
+    # ==================== ВЫГРУЗКА ДАННЫХ ====================
+    
     def get_full_experiment_data(self, id_experiment: int) -> Optional[Dict]:
-        """Возвращает все данные эксперимента для выгрузки в Excel"""
+        """Возвращает все данные эксперимента для выгрузки в Excel.
+           Объединяет настройки, метрики и историю по дням в один словарь."""
         experiment = self.get_experiment_by_id(id_experiment)
         if not experiment:
             return None
@@ -469,8 +507,11 @@ class DatabaseManager:
             'daily_history': daily_history
         }
 
+    # ==================== АДМИНИСТРИРОВАНИЕ ====================
+    
     def clear_all_experiments(self):
-        """Удаляет ВСЕ эксперименты (для администрирования)"""
+        """Удаляет ВСЕ эксперименты и настройки (для кнопки "Очистить всё").
+           ВНИМАНИЕ: действие необратимо!"""
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute("DELETE FROM experiment_daily_history")
@@ -482,15 +523,17 @@ class DatabaseManager:
             conn.commit()
 
     def delete_experiment(self, id_experiment: int):
-        """Удаляет эксперимент и все связанные данные"""
+        """Удаляет конкретный эксперимент и связанные с ним данные.
+           Если после удаления у id_setting не осталось экспериментов -
+           удаляет и настройки."""
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            # Получаем id_setting
+            # Получаем id_setting перед удалением
             cursor.execute("SELECT id_setting FROM experiments WHERE id_experiment = ?", (id_experiment,))
             row = cursor.fetchone()
             if row:
                 id_setting = row[0]
-                # Удаляем историю дней
+                # Удаляем историю дней (каскадно, но для порядка явно)
                 cursor.execute("DELETE FROM experiment_daily_history WHERE id_experiment = ?", (id_experiment,))
                 # Удаляем эксперимент
                 cursor.execute("DELETE FROM experiments WHERE id_experiment = ?", (id_experiment,))

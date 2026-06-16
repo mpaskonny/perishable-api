@@ -1,3 +1,13 @@
+"""
+demand.py - Стратегии генерации спроса
+
+Поддерживает:
+- Равномерное распределение (мин/макс)
+- Нормальное распределение (среднее/сигма)
+- Фиксированный список (для тестов)
+- Реальные данные из Excel (с интерполяцией пропусков)
+"""
+
 from abc import ABC, abstractmethod
 import random
 import numpy as np
@@ -28,7 +38,7 @@ class UniformDemand(DemandStrategy):
 
 
 class NormalDemand(DemandStrategy):
-    """Нормальное распределение спроса"""
+    """Нормальное распределение спроса (колокол)"""
     
     def __init__(self, mean, sigma):
         self.mean = mean
@@ -36,14 +46,14 @@ class NormalDemand(DemandStrategy):
     
     def get_demand(self, date, weekday_factors=None):
         base_demand = np.random.normal(self.mean, self.sigma)
-        base_demand = max(1, base_demand)
+        base_demand = max(1, base_demand)  # спрос не может быть меньше 1
         if weekday_factors:
             base_demand *= weekday_factors[date.weekday()]
         return int(round(base_demand))
 
 
 class FixedDemand(DemandStrategy):
-    """Фиксированный спрос (список значений по дням)"""
+    """Фиксированный спрос - для отладки и тестов"""
     
     def __init__(self, demand_list):
         self.demand_list = demand_list
@@ -54,37 +64,30 @@ class FixedDemand(DemandStrategy):
             demand = self.demand_list[self.day]
             self.day += 1
             return demand
-        return 20
+        return 20  # значение по умолчанию
 
 
 class RealDemand(DemandStrategy):
     """
-    Стратегия спроса на основе реальных данных из Excel.
-    Если для даты нет данных, используется базовое значение.
+    Спрос из реальных данных (без интерполяции)
+    Если даты нет - берём базовый спрос
     """
     
     def __init__(self, demand_data: Dict[date, float], base_demand: float = 100.0):
-        """
-        Args:
-            demand_data: словарь {дата: спрос}
-            base_demand: значение по умолчанию, если для даты нет данных
-        """
         self.demand_data = demand_data
         self.base_demand = base_demand
     
     def get_demand(self, date, weekday_factors=None):
-        # Ищем спрос на конкретную дату
         demand = self.demand_data.get(date.date(), self.base_demand)
-        
-        # Применяем коэффициенты дня недели (если есть)
         if weekday_factors:
             demand *= weekday_factors[date.weekday()]
-        
         return int(round(demand))
+
 
 class RealDemandWithInterpolation(DemandStrategy):
     """
-    Спрос из реальных данных с интерполяцией пропущенных дней
+    Спрос из реальных данных с линейной интерполяцией пропущенных дней
+    Это основной класс для импорта - заполняет пробелы в данных
     """
     
     def __init__(self, demand_data: Dict[datetime.date, float], base_demand: float = 100.0):
@@ -94,11 +97,11 @@ class RealDemandWithInterpolation(DemandStrategy):
     def get_demand(self, date, weekday_factors=None):
         date_key = date.date()
         
-        # Если есть точное значение — используем
+        # Если есть точное значение - берём его
         if date_key in self.demand_data:
             demand = self.demand_data[date_key]
         else:
-            # Для пропущенных дней — интерполяция между соседними
+            # Нет данных - интерполируем
             demand = self._interpolate_demand(date_key)
         
         if weekday_factors:
@@ -110,7 +113,7 @@ class RealDemandWithInterpolation(DemandStrategy):
         """Линейная интерполяция между ближайшими известными датами"""
         dates = sorted(self.demand_data.keys())
         
-        # Находим ближайшую предыдущую и следующую даты
+        # Ищем ближайшие даты слева и справа
         prev_date = None
         next_date = None
         
@@ -121,6 +124,7 @@ class RealDemandWithInterpolation(DemandStrategy):
                 next_date = d
                 break
         
+        # Крайние случаи: до начала или после конца
         if prev_date is None and next_date is None:
             return self.base_demand
         elif prev_date is None:
