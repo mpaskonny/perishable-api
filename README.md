@@ -82,41 +82,6 @@ streamlit run app.py
 
 ---
 
-## Структура проекта
-
-perishable-api/
-├── core/                      # Ядро симуляции
-│   ├── customer.py            # Стратегии покупателей (FIFO/LIFO)
-│   ├── data_loader.py         # Загрузка данных из Excel
-│   ├── delivery.py            # Стратегии поставок (4 шт.)
-│   ├── demand.py              # Стратегии спроса
-│   ├── product.py             # Основной класс товара
-│   ├── sigma_loader.py        # Загрузка сигм из Excel
-│   ├── simple_spoilage.py     # Модели порчи (3 шт.)
-│   └── spoilage.py            # Базовый класс порчи
-│
-├── database/                  # База данных
-│   └── db_manager.py          # Работа с SQLite
-│
-├── pages_alt/                 # Страницы интерфейса
-│   ├── database_page.py       # Управление БД
-│   ├── dialogs.py             # Модальные окна
-│   ├── help_page.py           # Справка
-│   └── simulation_page.py     # Симуляция
-│
-├── constants/                 # Эмпирические данные
-│   ├── demand_sigma.xlsx      # Сигмы для спроса
-│   ├── fifo_lifo_sigma.xlsx   # Сигмы для FIFO/LIFO
-│   └── spoilage_sigma.xlsx    # Сигмы для порчи
-│
-├── app.py                     # Точка входа (Streamlit)
-├── main.py                    # Точка входа (FastAPI)
-├── models.py                  # Pydantic-модели
-├── requirements.txt           # Зависимости
-└── README.md                  # Этот файл
-
----
-
 ## Пример использования
 
 1. Добавьте товар вкладка База данных кнопка Добавить товар
