@@ -1,3 +1,18 @@
+"""
+main.py - FastAPI бэкенд для симуляции управления запасами
+
+Этот файл реализует REST API для симуляции. Основные функции:
+- GET / - информация о сервисе
+- POST /simulate - запуск симуляции с заданными параметрами
+
+Архитектура:
+- Streamlit (фронтенд) отправляет POST-запрос на /simulate
+- FastAPI принимает параметры, создаёт объект Product с нужными стратегиями
+- Запускает симуляцию и возвращает JSON с результатами
+
+Технологии: FastAPI, Uvicorn, Pydantic для валидации
+"""
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from models import SimulationParams, SimulationResponse, DailyResult
@@ -14,37 +29,32 @@ from core.fifo_sigma_loader import get_fifo_sigma_loader
 from core.data_loader import DemandDataLoader
 
 
-# ========== КОНСТАНТЫ ==========
-# Молоко - параметры спроса
+# ========== КОНСТАНТЫ (для обратной совместимости, сейчас не используются) ==========
+# Раньше параметры были зашиты в код, теперь берутся из БД
 MILK_UNIFORM_MIN = 20
 MILK_UNIFORM_MAX = 30
 MILK_NORMAL_MEAN = 25
 MILK_NORMAL_SIGMA = 1.41
 
-# Помидоры - параметры спроса
 TOMATOES_UNIFORM_MIN = 150
 TOMATOES_UNIFORM_MAX = 200
 TOMATOES_NORMAL_MEAN = 175
 TOMATOES_NORMAL_SIGMA = 14.91
 
-# Параметры экспоненциальной порчи по умолчанию
 DEFAULT_POWER_P = 2.0
 DEFAULT_LOGISTIC_K = 15.0
-
-# Коэффициенты дней недели по умолчанию
 DEFAULT_WEEKDAY_FACTORS = [0.8, 0.6, 0.9, 1.0, 1.3, 1.5, 1.1]
-
-# Параметры утилизации
 DEFAULT_UTILIZATION_PRICE = 5.0
 
 
-# ========== ПРИЛОЖЕНИЕ ==========
+# ========== ПРИЛОЖЕНИЕ FASTAPI ==========
 app = FastAPI(
     title="Симулятор продуктов с ограниченным сроком годности",
     description="Универсальный API для симуляции управления запасами",
     version="3.0.0"
 )
 
+# Настройка CORS - разрешаем запросы с любого источника (для Streamlit)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -56,7 +66,15 @@ app.add_middleware(
 
 def create_product(params: SimulationParams) -> Product:
     """
-    Фабрика для создания продукта с нужными стратегиями
+    Фабрика для создания продукта с нужными стратегиями.
+    
+    По переданным параметрам создаёт:
+    - Стратегию спроса (равномерный/нормальный/реальные данные)
+    - Стратегию покупателей (FIFO/LIFO с фикс. или норм. распределением)
+    - Стратегию поставок (R,S / R,Q / s,S / s,Q)
+    - Стратегию порчи (линейная/степенная/логистическая/строгий срок)
+    
+    Возвращает готовый объект Product, готовый к запуску.
     """
     # Получаем базовые параметры продукта из БД
     db = DatabaseManager()
@@ -77,6 +95,7 @@ def create_product(params: SimulationParams) -> Product:
                 date = datetime.strptime(date_str, '%Y-%m-%d').date()
                 demand_data[date] = demand
             
+            # Используем интерполяцию для пропущенных дней
             demand_strategy = RealDemandWithInterpolation(demand_data, base_demand)
             customer_strategy = FixedCustomerStrategy()
             
@@ -88,6 +107,7 @@ def create_product(params: SimulationParams) -> Product:
             raise HTTPException(status_code=400, detail=f"Ошибка обработки данных: {str(e)}")
 
     elif params.fixed_demand:
+        # Фиксированный спрос (для тестов)
         demand_strategy = FixedDemand(params.fixed_demand)
         customer_strategy = FixedCustomerStrategy()
         
@@ -111,6 +131,7 @@ def create_product(params: SimulationParams) -> Product:
         
         demand_strategy = NormalDemand(base_demand, empirical_sigma)
         
+        # Для строгих товаров (молоко) используем случайное отклонение FIFO
         if category_id == 1:  # strict (молоко)
             fifo_loader = get_fifo_sigma_loader()
             sigma_fifo, sigma_lifo = fifo_loader.get_sigmas(int(params.fifo_percent or 75))
@@ -130,7 +151,6 @@ def create_product(params: SimulationParams) -> Product:
         fixed_cost = params.delivery_fixed_cost
         rate_cost = params.delivery_rate_cost
 
-    # ===== ВЫБОР СПОСОБА ПОСТАВКИ И СТРАТЕГИИ =====
     # Определяем расписание (периодичность или дни недели)
     if params.schedule_type == "frequency":
         delivery_frequency = params.delivery_frequency or 2
@@ -177,7 +197,6 @@ def create_product(params: SimulationParams) -> Product:
         )
     else:
         # (R, S) — периодическая до целевого уровня
-        # Проверяем тип расписания
         if params.schedule_type == "days":
             # Поставки по дням недели
             delivery_days = params.delivery_days or [0, 3]
@@ -187,7 +206,6 @@ def create_product(params: SimulationParams) -> Product:
                 fixed_cost=fixed_cost,
                 rate_cost=rate_cost
             )
-
         else:
             # Поставки с фиксированной периодичностью
             if params.schedule_type == "frequency":
@@ -204,13 +222,12 @@ def create_product(params: SimulationParams) -> Product:
 
     
     # ========== 3. СТРАТЕГИЯ ПОРЧИ ==========
-    # Утилизация для всех типов товаров (из настроек)
     utilization_price = params.utilization_price if params.utilization_price is not None else DEFAULT_UTILIZATION_PRICE
     
     if category_id == 1:  # strict (молоко)
         spoilage_strategy = StrictExpirySpoilage()
         is_strict = True
-    else:  # gradual
+    else:  # gradual (овощи/фрукты)
         is_strict = False
         
         if params.spoilage_type == "linear":
@@ -248,6 +265,7 @@ def create_product(params: SimulationParams) -> Product:
 
 @app.get("/")
 async def root():
+    """Корневой эндпоинт с информацией о сервисе"""
     return {
         "message": "API симулятора управления запасами",
         "version": "3.0.0",
@@ -264,7 +282,16 @@ async def root():
 @app.post("/simulate", response_model=SimulationResponse)
 async def simulate(params: SimulationParams):
     """
-    Универсальная симуляция управления запасами
+    Главный эндпоинт для запуска симуляции.
+    
+    Ожидает JSON с параметрами (см. models.SimulationParams),
+    возвращает JSON с результатами (см. models.SimulationResponse).
+    
+    Процесс:
+    1. Создаётся объект Product через фабрику create_product()
+    2. Запускается симуляция на указанное количество дней
+    3. Результаты преобразуются в модель DailyResult
+    4. Возвращается JSON с метриками и историей по дням
     """
     try:
         product = create_product(params)
@@ -276,9 +303,11 @@ async def simulate(params: SimulationParams):
             lifo_percent=params.lifo_percent or 0.0
         )
         
+        # Преобразуем результаты в модель DailyResult
         daily_results = []
         for h in results['daily_history']:
             if params.product_type == "milk":
+                # Для молока (строгий срок) - больше полей
                 daily_results.append(DailyResult(
                     day=h['day'],
                     date=h['date'],
@@ -301,6 +330,7 @@ async def simulate(params: SimulationParams):
                     unmet_demand=float(h.get('unmet_demand', 0))
                 ))
             else:
+                # Для помидоров (постепенная порча) - меньше полей
                 daily_results.append(DailyResult(
                     day=h['day'],
                     date=h['date'],

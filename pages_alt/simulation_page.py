@@ -1,3 +1,17 @@
+"""
+simulation_page.py - Главная страница симуляции
+
+Содержит:
+- Выбор товара из БД
+- Отображение текущих настроек
+- Запуск симуляции (через API)
+- Отображение результатов (метрики, графики, таблицы)
+- Сохранение эксперимента в БД
+
+Взаимодействует с FastAPI бэкендом через HTTP-запросы.
+"""
+
+
 import streamlit as st
 import requests
 import pandas as pd
@@ -11,7 +25,10 @@ from database.db_manager import DatabaseManager
 
 
 def run_multiple_simulations(params, num_simulations, API_URL, days):
-    """Запускает несколько симуляций и возвращает усреднённые результаты + статистику"""
+    """
+    Запускает несколько симуляций (метод Монте-Карло).
+    Возвращает усреднённые результаты + статистику (мин/макс/среднее/σ).
+    """
     all_daily_histories = []
     all_metrics = []
     
@@ -107,7 +124,11 @@ def run_multiple_simulations(params, num_simulations, API_URL, days):
 
 
 def export_experiment_to_excel(db, id_experiment: int) -> BytesIO:
-    """Выгружает эксперимент из БД в многостраничный Excel с русскими названиями"""
+    """
+    Выгружает эксперимент из БД в многостраничный Excel-отчёт.
+    Формирует 5 листов: Метрики, 1. Общие настройки, 2. Стратегия поставок,
+    3. Доставка, Детально по дням.
+    """
     
     data = db.get_full_experiment_data(id_experiment)
     if not data:
@@ -357,7 +378,14 @@ def export_experiment_to_excel(db, id_experiment: int) -> BytesIO:
 
 
 def save_complete_experiment(results, params, daily_history_df, db):
-    """Сохраняет эксперимент целиком: настройки + метрики + история по дням"""
+    """
+    Сохраняет эксперимент целиком:
+    1. Настройки → experiment_settings
+    2. Метрики → experiments
+    3. История по дням → experiment_daily_history
+    
+    Генерирует случайный seed для воспроизводимости.
+    """
     
     import random
     
@@ -443,8 +471,13 @@ def save_complete_experiment(results, params, daily_history_df, db):
 
 
 def show(settings_dialog=None):
-    """Страница симуляции"""
+    """
+    Главная функция страницы симуляции.
+    Отвечает за интерфейс: выбор товара, кнопка настроек, кнопка запуска.
+    После запуска вызывает display_simulation_results для отображения.
+    """
     
+    # Инициализация флагов (только один раз, при первом запуске)
     if 'simulation_started' not in st.session_state:
         st.session_state.show_add_modal = False
         st.session_state.show_edit_modal = False
@@ -741,7 +774,15 @@ def show(settings_dialog=None):
 
 
 def display_simulation_results(results, db):
-    """Отображает результаты симуляции"""
+    """
+    Отображает результаты симуляции:
+    - 6 метрик (выручка, затраты, прибыль, потери, неуд.спрос, средний остаток)
+    - 4 графика (спрос/продажи, остатки, порча, поставки)
+    - 2 гистограммы (распределение спроса, распределение FIFO)
+    - Детальная таблица по дням
+    
+    Также содержит кнопку "Сохранить эксперимент".
+    """
     if results is None:
         return
 

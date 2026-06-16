@@ -1,3 +1,13 @@
+"""
+database_page.py - Страница управления базой данных
+
+Содержит две вкладки:
+1. Товары - CRUD операции с товарами
+2. История экспериментов - просмотр, выгрузка и удаление сохранённых экспериментов
+
+Использует модальные окна (st.dialog) для форм добавления/редактирования.
+"""
+
 import streamlit as st
 import pandas as pd
 from datetime import datetime
@@ -13,7 +23,11 @@ from pages_alt.simulation_page import export_experiment_to_excel
 
 @st.dialog("📊 Детали эксперимента", width="large")
 def view_experiment_dialog(experiment_data: dict, db):
-    """Диалоговое окно с детальными метриками эксперимента"""
+    """
+    Диалоговое окно с детальной информацией об эксперименте.
+    Вызывается при нажатии на кнопку 📊 в таблице экспериментов.
+    Показывает все метрики и параметры, позволяет выгрузить в Excel.
+    """
     
     exp = experiment_data['experiment']
     settings = experiment_data['settings']
@@ -23,7 +37,7 @@ def view_experiment_dialog(experiment_data: dict, db):
     
     st.markdown("---")
     
-    # ===== ОСНОВНЫЕ МЕТРИКИ =====
+    # ===== Основные метрики в две колонки =====
     st.markdown("#### 📈 Основные метрики")
     
     col1, col2 = st.columns(2)
@@ -44,9 +58,10 @@ def view_experiment_dialog(experiment_data: dict, db):
     
     st.markdown("---")
     
-    # ===== ПАРАМЕТРЫ ЭКСПЕРИМЕНТА =====
+    # ===== Параметры эксперимента (что было настроено) =====
     st.markdown("#### ⚙️ Параметры эксперимента")
     
+    # Расшифровываем коды в человекочитаемые названия
     strategy_names = {
         "r_s": "(R, S) — периодическая до целевого уровня",
         "r_q": "(R, Q) — фиксированный объём по расписанию",
@@ -81,6 +96,7 @@ def view_experiment_dialog(experiment_data: dict, db):
     
     period = f"{settings.get('start_date', '-')} — {settings.get('end_date', '-')} ({settings.get('days', 0)} дней)"
     
+    # Собираем все параметры в таблицу
     params_data = {
         'Параметр': [
             'Товар',
@@ -119,7 +135,7 @@ def view_experiment_dialog(experiment_data: dict, db):
     
     st.markdown("---")
     
-    # ===== КНОПКИ =====
+    # ===== Кнопки: выгрузка в Excel и закрытие =====
     col_btn1, col_btn2 = st.columns(2)
     
     with col_btn1:
@@ -141,6 +157,7 @@ def view_experiment_dialog(experiment_data: dict, db):
     
     with col_btn2:
         if st.button("❌ Закрыть", use_container_width=True):
+            # Сбрасываем флаги диалога при закрытии
             st.session_state.show_view_dialog = False
             st.session_state.view_experiment_data = None
             st.rerun()
@@ -148,7 +165,10 @@ def view_experiment_dialog(experiment_data: dict, db):
 
 @st.dialog("🗑️ Удаление эксперимента", width="small")
 def confirm_delete_experiment(exp_id: int, exp_name: str, db):
-    """Диалог подтверждения удаления эксперимента"""
+    """
+    Диалог подтверждения удаления эксперимента.
+    Вызывается при нажатии на кнопку 🗑️ в таблице экспериментов.
+    """
     
     st.warning(f"⚠️ Вы действительно хотите удалить эксперимент **#{exp_id}** ({exp_name})?")
     st.caption("Это действие невозможно отменить. Все данные эксперимента будут удалены из базы данных.")
@@ -159,6 +179,7 @@ def confirm_delete_experiment(exp_id: int, exp_name: str, db):
             try:
                 db.delete_experiment(exp_id)
                 st.success(f"✅ Эксперимент #{exp_id} удалён!")
+                # Сбрасываем флаги после удаления
                 st.session_state.show_delete_modal = False
                 st.session_state.delete_exp_id = None
                 st.session_state.delete_exp_name = None
@@ -176,7 +197,8 @@ def confirm_delete_experiment(exp_id: int, exp_name: str, db):
 def show():
     """Страница управления базой данных"""
     
-    # СБРАСЫВАЕМ ФЛАГИ ТОЛЬКО ПРИ ПЕРВОМ ЗАПУСКЕ
+    # Инициализация флагов только при первом запуске страницы
+    # Важно: не сбрасывать их при каждом rerun!
     if 'db_page_initialized' not in st.session_state:
         st.session_state.db_page_initialized = True
         st.session_state.show_add_modal = False
@@ -197,10 +219,11 @@ def show():
     
     tab1, tab2 = st.tabs(["📦 Товары", "📊 История экспериментов"])
     
-    # ========== ТОВАРЫ ==========
+    # ==================== ВКЛАДКА "ТОВАРЫ" ====================
     with tab1:
         st.subheader("📋 Список товаров")
         
+        # Кнопка добавления товара
         col1, col2 = st.columns([6, 1])
         with col2:
             if st.button("➕ Добавить товар", type="primary", use_container_width=True):
@@ -209,6 +232,7 @@ def show():
         products_df = db.get_all_products()
         
         if not products_df.empty:
+            # Шапка таблицы
             col1, col2, col3, col4, col5, col6, col7, col8 = st.columns([2, 1.5, 1.2, 1.2, 0.8, 1, 0.5, 0.5])
             with col1:
                 st.write("**Название**")
@@ -229,6 +253,7 @@ def show():
             
             st.divider()
             
+            # Строки товаров с кнопками редактирования и удаления
             for idx, row in products_df.iterrows():
                 col1, col2, col3, col4, col5, col6, col7, col8 = st.columns([2, 1.5, 1.2, 1.2, 0.8, 1, 0.5, 0.5])
                 
@@ -267,10 +292,11 @@ def show():
         else:
             st.info("📭 Нет товаров в базе данных. Нажмите «➕ Добавить товар», чтобы добавить первый товар.")
     
-    # ========== ИСТОРИЯ ЭКСПЕРИМЕНТОВ ==========
+    # ==================== ВКЛАДКА "ИСТОРИЯ ЭКСПЕРИМЕНТОВ" ====================
     with tab2:
         st.subheader("📊 Сохранённые симуляции")
         
+        # Кнопка очистки всей истории
         col1, col2 = st.columns([4, 1])
         with col2:
             if st.button("🗑️ Очистить всё", type="secondary", use_container_width=True):
@@ -279,9 +305,31 @@ def show():
         exp_df = db.get_all_experiments()
         
         if not exp_df.empty:
-            # Простая таблица без лишних колонок
+            # Шапка таблицы экспериментов
+            col1, col2, col3, col4, col5, col6, col7, col8, col9 = st.columns([0.5, 1.5, 1.0, 1.0, 1.0, 0.8, 0.8, 0.5, 0.5])
+            with col1:
+                st.write("**ID**")
+            with col2:
+                st.write("**Товар**")
+            with col3:
+                st.write("**Стратегия**")
+            with col4:
+                st.write("**Прибыль**")
+            with col5:
+                st.write("**Выручка**")
+            with col6:
+                st.write("**Затраты**")
+            with col7:
+                st.write("**Потери**")
+            with col8:
+                st.write("")
+            with col9:
+                st.write("")
+            
+            st.divider()
+            
+            # Строки экспериментов с кнопками просмотра 📊 и удаления 🗑️
             for idx, row in exp_df.iterrows():
-                # Создаём строку с кнопками
                 col1, col2, col3, col4, col5, col6, col7, col8, col9 = st.columns([0.5, 1.5, 1.0, 1.0, 1.0, 0.8, 0.8, 0.5, 0.5])
                 
                 with col1:
@@ -289,6 +337,7 @@ def show():
                 with col2:
                     st.write(f"{row['product_name'][:20]}")
                 with col3:
+                    # Сокращённое название стратегии для таблицы
                     strategy_short = {
                         "r_s": "(R,S)",
                         "r_q": "(R,Q)",
@@ -307,13 +356,13 @@ def show():
                 with col7:
                     st.write(f"{row.get('total_spoilage_kg', 0):.1f}")
                 with col8:
-                    # Кнопка просмотра
+                    # Кнопка просмотра деталей
                     if st.button("📊", key=f"view_{row['id_experiment']}", help="Просмотреть детали"):
                         st.session_state.view_exp_id = row['id_experiment']
                         st.session_state.show_view_dialog = True
                         st.rerun()
                 with col9:
-                    # Кнопка удаления
+                    # Кнопка удаления эксперимента
                     if st.button("🗑️", key=f"del_{row['id_experiment']}", help="Удалить эксперимент"):
                         st.session_state.del_exp_id = row['id_experiment']
                         st.session_state.del_exp_name = row['product_name']
@@ -326,9 +375,10 @@ def show():
         else:
             st.info("📭 Нет сохранённых экспериментов")
     
-    # ========== ВЫЗОВ МОДАЛЬНЫХ ОКОН ==========
+    # ==================== ВЫЗОВ МОДАЛЬНЫХ ОКОН ====================
+    # Важно: используем if/elif, чтобы открывалось только одно окно за раз
     
-    # Модальное окно просмотра эксперимента
+    # Диалог просмотра эксперимента
     if st.session_state.get('show_view_dialog', False):
         exp_id = st.session_state.get('view_exp_id')
         if exp_id:
@@ -337,11 +387,11 @@ def show():
                 view_experiment_dialog(exp_data, db)
             else:
                 st.error("❌ Не удалось загрузить данные эксперимента")
-        # Сбрасываем флаг после отображения диалога
+        # Сбрасываем флаги после показа диалога
         st.session_state.show_view_dialog = False
         st.session_state.view_exp_id = None
     
-    # Модальное окно удаления эксперимента
+    # Диалог удаления эксперимента
     elif st.session_state.get('show_delete_modal', False):
         confirm_delete_experiment(
             st.session_state.del_exp_id,
@@ -352,10 +402,14 @@ def show():
         st.session_state.del_exp_id = None
         st.session_state.del_exp_name = None
     
-    # Остальные модальные окна
+    # Диалог добавления товара
     elif st.session_state.get('show_add_modal', False):
         add_product_modal()
+    
+    # Диалог редактирования товара
     elif st.session_state.get('show_edit_modal', False) and st.session_state.get('editing_product'):
         edit_product_modal()
+    
+    # Диалог очистки всех экспериментов
     elif st.session_state.get('show_clear_modal', False):
         clear_experiments_modal()

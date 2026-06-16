@@ -1,3 +1,11 @@
+"""
+spoilage_sigma_loader.py - Загрузка сигм для вариативности срока годности
+
+Файл: constants/spoilage_sigma.xlsx
+Для каждого срока годности (листы-числа) в ячейке F7 лежит сигма.
+Сигма определяет разброс фактического срока годности относительно номинального.
+"""
+
 import os
 import pandas as pd
 
@@ -56,8 +64,9 @@ class SpoilageSigmaLoader:
         """
         self._ensure_loaded()
         
+        # Если кэш пуст - теоретическая сигма (10% от срока)
         if not self.sigma_cache:
-            return shelf_life_days * 0.1  # теоретическая сигма (10% от срока)
+            return shelf_life_days * 0.1
         
         # Точное совпадение
         if shelf_life_days in self.sigma_cache:
@@ -68,7 +77,7 @@ class SpoilageSigmaLoader:
         return self.sigma_cache[closest]
     
     def get_stats(self):
-        """Возвращает статистику загруженных сигм (для отладки)"""
+        """Для отладки - статистика загруженных сигм"""
         self._ensure_loaded()
         return {
             'loaded': len(self.sigma_cache),
@@ -81,7 +90,7 @@ class SpoilageSigmaLoader:
 _spoilage_sigma_loader = None
 
 def get_spoilage_sigma_loader() -> SpoilageSigmaLoader:
-    """Возвращает глобальный экземпляр SpoilageSigmaLoader"""
+    """Возвращает глобальный экземпляр (ленивая инициализация)"""
     global _spoilage_sigma_loader
     if _spoilage_sigma_loader is None:
         _spoilage_sigma_loader = SpoilageSigmaLoader()
